@@ -2,12 +2,10 @@ name: Publish Release
 
 on:
   push:
-    # 情况1: 你手动推送到 main 分支，且修改了 VERSION 文件
-    branches: [ "main" ]
-    paths: [ "VERSION" ]
-    # 情况2: 你手动打了 v* 标签
+    branches: [ "main" ] # 如果你是 master 分支，请在这里改成 "master"
+    # paths: [ "VERSION" ]  <-- 暂时注释掉这一行
     tags: [ "v*" ]
-  workflow_dispatch: # 允许手动点按钮触发
+  workflow_dispatch: # 保持这个，允许手动点按钮
 
 permissions:
   contents: write
