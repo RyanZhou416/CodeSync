@@ -1,0 +1,54 @@
+name: Build CodeSync
+
+on:
+  push:
+    tags:
+      - 'v*' # 只有打 v1.0 这种标签时才触发构建发布
+  workflow_dispatch: # 允许手动触发
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        os: [windows-latest, macos-latest, ubuntu-latest]
+    
+    runs-on: ${{ matrix.os }}
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+
+    - name: Install dependencies
+      run: |
+        pip install -r requirements.txt
+        pip install pyinstaller
+
+    # --- Windows Build ---
+    - name: Build Windows
+      if: matrix.os == 'windows-latest'
+      # 注意：这里我们添加了 assets/lang.json
+      run: |
+        pyinstaller --noconsole --onefile --name "CodeSync_Win" --add-data "assets/lang.json;assets" src/main.py
+
+    # --- macOS Build ---
+    - name: Build macOS
+      if: matrix.os == 'macos-latest'
+      run: |
+        pyinstaller --noconsole --onefile --name "CodeSync_Mac" --add-data "assets/lang.json:assets" src/main.py
+
+    # --- Linux Build ---
+    - name: Build Linux
+      if: matrix.os == 'ubuntu-latest'
+      run: |
+        pyinstaller --noconsole --onefile --name "CodeSync_Linux" --add-data "assets/lang.json:assets" src/main.py
+
+    # 上传产物
+    - name: Upload Artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: CodeSync-${{ matrix.os }}
+        path: dist/
