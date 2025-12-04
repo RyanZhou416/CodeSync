@@ -56,7 +56,7 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 ; 这里定义安装向导中的“附加任务”页面
 [Tasks]
 ; 创建桌面快捷方式 (Flags: unchecked 表示默认不勾选，checked 表示默认勾选)
-Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: checked
+Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}";
 ; 创建开始菜单文件夹
 ; Inno Setup 默认会创建开始菜单文件夹，除非在这里或者 [Setup] 禁止。
 ; 但如果我们要一个额外的“快速启动栏”或者其他，可以在这里加。
