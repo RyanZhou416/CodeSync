@@ -2,23 +2,24 @@ name: Build CodeSync
 
 on:
   push:
-    tags:
-      - 'v*' # 只有打 v1.0 这种标签时才触发构建发布
-  workflow_dispatch: # 允许手动触发
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+  workflow_dispatch:
 
 jobs:
   build:
     strategy:
       matrix:
         os: [windows-latest, macos-latest, ubuntu-latest]
-    
+
     runs-on: ${{ matrix.os }}
 
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4  # 升级到 v4
 
     - name: Set up Python
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@v5 # 升级到 v5
       with:
         python-version: '3.9'
 
@@ -30,7 +31,6 @@ jobs:
     # --- Windows Build ---
     - name: Build Windows
       if: matrix.os == 'windows-latest'
-      # 注意：这里我们添加了 assets/lang.json
       run: |
         pyinstaller --noconsole --onefile --name "CodeSync_Win" --add-data "assets/lang.json;assets" src/main.py
 
@@ -48,7 +48,7 @@ jobs:
 
     # 上传产物
     - name: Upload Artifacts
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4  # 这里就是报错的关键，必须升级到 v4
       with:
         name: CodeSync-${{ matrix.os }}
         path: dist/
