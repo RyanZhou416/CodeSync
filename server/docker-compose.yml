@@ -2,8 +2,14 @@ version: '3.8'
 
 services:
   codesync-server:
+    # Official Image
     image: ghcr.io/ryanzhou416/codesync/codesync-server:latest
     container_name: codesync_server
+    # Restart policy
     restart: always
     ports:
+      # Port Mapping: "HostPort:ContainerPort"
+      # You can change the 8000 on the left to any port you want
       - "8000:8000"
+    environment:
+      - PYTHONUNBUFFERED=1
