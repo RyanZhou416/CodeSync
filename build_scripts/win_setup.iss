@@ -16,7 +16,11 @@ DefaultDirName={autopf}\CodeSync
 DefaultGroupName=CodeSync
 ; 输出安装包的位置 (项目根目录/Output)
 OutputDir=..\Output
-OutputBaseFilename=CodeSync_Setup_v1.0
+#ifndef MyOutputFilename
+  #define MyOutputFilename "CodeSync_Setup"
+#endif
+
+OutputBaseFilename={#MyOutputFilename}
 Compression=lzma
 SolidCompression=yes
 ; 图标设置 (如果你有 assets/icon.ico，取消下面注释)

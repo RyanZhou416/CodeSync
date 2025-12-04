@@ -1,0 +1,213 @@
+name: Publish Release
+
+# 只有在推送 v* 标签时触发 (例如 git tag v1.0.0 -> git push origin v1.0.0)
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+  packages: write # 允许上传 Docker 镜像
+
+jobs:
+  # ===================================================
+  # 1. Windows 构建 (x64 和 x86 安装包)
+  # ===================================================
+  build-windows:
+    runs-on: windows-latest
+    strategy:
+      matrix:
+        arch: [x64, x86] # 矩阵构建
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.9'
+          architecture: ${{ matrix.arch }} # 关键：切换 Python 架构
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install pyinstaller
+
+      - name: Install Inno Setup
+        run: choco install innosetup
+
+      - name: Build EXE
+        # 注意：这里我们加上架构后缀
+        run: |
+          pyinstaller --noconsole --onefile --name "CodeSync" --add-data "assets/lang.json;assets" src/main.py
+
+      - name: Compile Installer (Inno Setup)
+        # 使用 ISCC 命令行工具，并通过 /D 定义输出文件名
+        run: |
+          "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" /DMyOutputFilename="CodeSync_Setup_Win_${{ matrix.arch }}" build_scripts\win_setup.iss
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: setup-windows-${{ matrix.arch }}
+          path: Output/*.exe
+
+  # ===================================================
+  # 2. macOS 构建 (Intel 和 Apple Silicon)
+  # ===================================================
+  build-macos:
+    name: build-macos-${{ matrix.arch }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: macos-13      # Intel (x86_64)
+            arch: x86_64
+          - os: macos-latest  # Apple Silicon (arm64)
+            arch: arm64
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.9'
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install pyinstaller create-dmg
+
+      - name: Build .app
+        run: |
+          pyinstaller --noconsole --windowed --name "CodeSync" --add-data "assets/lang.json:assets" src/main.py
+
+      - name: Create DMG
+        run: |
+          # 创建一个临时文件夹用来做 DMG 根目录
+          mkdir -p dmg_root
+          cp -r "dist/CodeSync.app" dmg_root/
+          # 简单的 create-dmg 命令
+          create-dmg \
+            --volname "CodeSync Installer" \
+            --window-pos 200 120 \
+            --window-size 800 400 \
+            "CodeSync_Mac_${{ matrix.arch }}.dmg" \
+            "dmg_root/"
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dmg-macos-${{ matrix.arch }}
+          path: "*.dmg"
+
+  # ===================================================
+  # 3. Linux 构建 (.deb 和 Binary)
+  # ===================================================
+  build-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.9'
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install pyinstaller
+
+      - name: Build Binary
+        run: |
+          pyinstaller --noconsole --onefile --name "CodeSync" --add-data "assets/lang.json:assets" src/main.py
+          mv dist/CodeSync CodeSync_Linux_x86_64.bin
+
+      # 简单的打包成 .deb (这是最通用的 Linux 安装包)
+      - name: Create .deb package
+        run: |
+          mkdir -p deb_package/usr/local/bin
+          mkdir -p deb_package/DEBIAN
+          cp CodeSync_Linux_x86_64.bin deb_package/usr/local/bin/codesync
+          chmod +x deb_package/usr/local/bin/codesync
+          
+          # 创建 control 文件
+          echo "Package: codesync" > deb_package/DEBIAN/control
+          echo "Version: ${{ github.ref_name }}" | sed 's/v//' >> deb_package/DEBIAN/control
+          echo "Architecture: amd64" >> deb_package/DEBIAN/control
+          echo "Maintainer: Ryan" >> deb_package/DEBIAN/control
+          echo "Description: CodeSync Client" >> deb_package/DEBIAN/control
+          
+          dpkg-deb --build deb_package CodeSync_Linux_amd64.deb
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-packages
+          path: |
+            *.bin
+            *.deb
+
+  # ===================================================
+  # 4. Server Docker 构建
+  # ===================================================
+  build-docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata (tags, labels)
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}/codesync-server
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./server
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+
+  # ===================================================
+  # 5. 发布 Release (汇总所有文件)
+  # ===================================================
+  release:
+    needs: [build-windows, build-macos, build-linux, build-docker]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download Windows Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: setup-windows-*
+          merge-multiple: true
+
+      - name: Download macOS Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: dmg-macos-*
+          merge-multiple: true
+
+      - name: Download Linux Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: linux-packages
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            *.exe
+            *.dmg
+            *.bin
+            *.deb
+          generate_release_notes: true
