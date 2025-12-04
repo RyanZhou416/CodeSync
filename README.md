@@ -142,4 +142,4 @@ python server.py
 
 ## 📄 License
 
-This project is open-sourced under the MIT License.
+This project is open-sourced under the MIT [License](LICENSE).
