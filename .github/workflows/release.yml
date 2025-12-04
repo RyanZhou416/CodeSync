@@ -2,10 +2,10 @@ name: Publish Release
 
 on:
   push:
-    branches: [ "master" ] # 如果你是 master 分支，请在这里改成 "master"
+    branches: [ "master" ]
     paths: [ "VERSION" ]
     tags: [ "v*" ]
-  workflow_dispatch: # 保持这个，允许手动点按钮
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -13,7 +13,7 @@ permissions:
 
 jobs:
   # ===================================================
-  # 1. 准备工作：读取版本号
+  # 1. 准备工作
   # ===================================================
   prepare:
     runs-on: ubuntu-latest
@@ -24,12 +24,10 @@ jobs:
       - name: Read VERSION file
         id: get_version
         run: |
-          # 读取文件并去除首尾空格
           v=$(cat VERSION | xargs)
-          # 如果没有 v 前缀，自动加上
           if [[ $v != v* ]]; then v="v$v"; fi
           echo "version=$v" >> $GITHUB_OUTPUT
-          echo "Target Release Version: $v"
+          echo "Target Version: $v"
 
   # ===================================================
   # 2. Windows 构建
@@ -59,12 +57,11 @@ jobs:
       - name: Install Inno Setup
         run: choco install innosetup
       - name: Build EXE
-        # 注意：这里添加了 VERSION 文件
         run: |
-          pyinstaller --noconsole --onefile --name "CodeSync" --add-data "assets/lang.json;assets" --add-data "VERSION;." --paths "src" src/main.py
+          pyinstaller --noconsole --onefile --name "CodeSync" --paths "src" --add-data "assets/lang.json;assets" --add-data "VERSION;." src/main.py
       - name: Compile Installer
         shell: cmd
-        # 传入 MyAppVersion 确保安装包版本号正确
+        # Windows 已经在 .iss 文件内部处理了版本号拼接，这里只需传入变量
         run: |
           "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" /DMyOutputFilename="CodeSync_Setup_Win_${{ matrix.arch }}" /DMyAppArch="${{ matrix.arch }}" build_scripts\win_setup.iss
       - name: Upload Artifact
@@ -90,19 +87,25 @@ jobs:
           brew install create-dmg
           pip install -r requirements.txt
           pip install pyinstaller
+
       - name: Build .app
         run: |
-          chmod +x build_scripts/mac_build.sh
-          sh build_scripts/mac_build.sh
+          pyinstaller --noconsole --windowed --name "CodeSync" --paths "src" --add-data "assets/lang.json:assets" --add-data "VERSION:." src/main.py
+
       - name: Create DMG
+        # 核心修改：在文件名中加入版本号变量
         run: |
+          VERSION="${{ needs.prepare.outputs.version }}"
+          DMG_NAME="CodeSync_Mac_${VERSION}_Universal.dmg"
+          
           create-dmg \
             --volname "CodeSync Installer" \
             --window-pos 200 120 \
             --window-size 800 400 \
             --app-drop-link 600 185 \
-            "CodeSync_Mac_Universal.dmg" \
+            "$DMG_NAME" \
             "dist/CodeSync.app"
+
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
@@ -127,16 +130,22 @@ jobs:
           pip install pyinstaller
       - name: Build Binary
         run: |
-          pyinstaller --noconsole --onefile --name "CodeSync" --add-data "assets/lang.json:assets" --add-data "VERSION:." --paths "src" src/main.py
-          mv dist/CodeSync CodeSync_Linux_amd64.bin
+          pyinstaller --noconsole --onefile --name "CodeSync" --paths "src" --add-data "assets/lang.json:assets" --add-data "VERSION:." src/main.py
+          
+          # 核心修改：重命名二进制文件带版本号
+          VERSION="${{ needs.prepare.outputs.version }}"
+          mv dist/CodeSync "CodeSync_Linux_${VERSION}_amd64.bin"
+
       - name: Create .deb package
         run: |
-          # 读取纯数字版本号 (去掉 v)
           VER=$(cat VERSION | xargs)
+          FULL_VER="${{ needs.prepare.outputs.version }}"
           
           mkdir -p deb_package/usr/local/bin
           mkdir -p deb_package/DEBIAN
-          cp CodeSync_Linux_amd64.bin deb_package/usr/local/bin/codesync
+          
+          # 复制刚才重命名过的 bin 文件并改回通用名 codesync，方便用户输入命令
+          cp "CodeSync_Linux_${FULL_VER}_amd64.bin" deb_package/usr/local/bin/codesync
           chmod +x deb_package/usr/local/bin/codesync
           
           echo "Package: codesync" > deb_package/DEBIAN/control
@@ -145,7 +154,9 @@ jobs:
           echo "Maintainer: Ryan" >> deb_package/DEBIAN/control
           echo "Description: CodeSync Client" >> deb_package/DEBIAN/control
           
-          dpkg-deb --build deb_package CodeSync_Linux_amd64.deb
+          # 核心修改：输出 deb 文件名带版本号
+          dpkg-deb --build deb_package "CodeSync_Linux_${FULL_VER}_amd64.deb"
+
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
@@ -173,7 +184,6 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: ghcr.io/${{ github.repository }}/codesync-server
-          # 自动打标签: latest 和 版本号(v1.0.x)
           tags: |
             type=raw,value=latest
             type=raw,value=${{ needs.prepare.outputs.version }}
@@ -186,11 +196,13 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
 
   # ===================================================
-  # 6. 发布 Release (整合)
+  # 6. 发布 Release
   # ===================================================
   release:
     needs: [prepare, build-windows, build-macos, build-linux, build-docker]
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - name: Download Windows Artifacts
         uses: actions/download-artifact@v4
@@ -210,8 +222,6 @@ jobs:
       - name: Publish to GitHub Releases
         uses: softprops/action-gh-release@v2
         with:
-          # 使用 prepare 阶段读取到的版本号 (例如 v1.0.8) 作为标签名
-          # 如果该标签不存在，它会自动创建！
           tag_name: ${{ needs.prepare.outputs.version }}
           name: Release ${{ needs.prepare.outputs.version }}
           draft: false
