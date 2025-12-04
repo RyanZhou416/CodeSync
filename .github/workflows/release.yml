@@ -61,7 +61,7 @@ jobs:
       - name: Build EXE
         # 注意：这里添加了 VERSION 文件
         run: |
-          pyinstaller --noconsole --onefile --name "CodeSync" --add-data "assets/lang.json;assets" --add-data "VERSION;." src/main.py
+          pyinstaller --noconsole --onefile --name "CodeSync" --add-data "assets/lang.json;assets" --add-data "VERSION;." --paths "src" src/main.py
       - name: Compile Installer
         shell: cmd
         # 传入 MyAppVersion 确保安装包版本号正确
@@ -127,7 +127,7 @@ jobs:
           pip install pyinstaller
       - name: Build Binary
         run: |
-          pyinstaller --noconsole --onefile --name "CodeSync" --add-data "assets/lang.json:assets" --add-data "VERSION:." src/main.py
+          pyinstaller --noconsole --onefile --name "CodeSync" --add-data "assets/lang.json:assets" --add-data "VERSION:." --paths "src" src/main.py
           mv dist/CodeSync CodeSync_Linux_amd64.bin
       - name: Create .deb package
         run: |
