@@ -1,12 +1,12 @@
 ; 脚本位置：CodeSync/build_scripts/win_setup.iss
 
-; === 1. 接收命令行传来的参数 ===
+; === 1. 接收命令行参数 ===
 #ifndef MyAppArch
   #define MyAppArch "x64"
 #endif
 
 #define MyAppName "代码同步 (CodeSync)"
-#define MyAppVersion "1.0.3"
+#define MyAppVersion "1.0.6"
 #define MyAppPublisher "Ryan"
 #define MyAppExeName "CodeSync.exe"
 
@@ -36,15 +36,15 @@ Compression=lzma
 SolidCompression=yes
 SetupIconFile=..\assets\icon.ico
 
-; === 4. 关键修复：让用户选择开始菜单 ===
-; 允许用户在安装时选择“不创建开始菜单文件夹”
+; === 4. 关键修复：强制显示开始菜单页面 ===
+; 允许用户勾选“不创建开始菜单文件夹”
 AllowNoIcons=yes
-; 确保显示“选择开始菜单文件夹”的页面
+; 确保不禁用开始菜单页面
 DisableProgramGroupPage=no
-; 确保显示“选择安装目录”的页面
+; 确保不禁用目录选择页面
 DisableDirPage=no
 
-; 卸载相关
+; 卸载设置
 CloseApplications=yes
 RestartApplications=no
 
@@ -62,12 +62,12 @@ Source: "..\assets\lang.json"; DestDir: "{app}\assets"; Flags: ignoreversion
 
 [Icons]
 ; === 5. 定义快捷方式 ===
-; {group} 代表用户在安装界面选择的“开始菜单文件夹”
-; 如果用户勾选了“不创建开始菜单文件夹”，这些图标将不会被创建
+; {group} 指代用户在安装向导中选择的开始菜单文件夹
+; 只有当用户没有勾选“不创建开始菜单文件夹”时，这些图标才会被创建
 Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
 Name: "{group}\{cm:UninstallProgram,{#MyAppName}}"; Filename: "{uninstallexe}"
 
-; 桌面快捷方式 (关联到上面的 Tasks)
+; 桌面快捷方式 (依赖 Tasks)
 Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
 
 [Run]
