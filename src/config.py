@@ -55,3 +55,21 @@ CONFIG_FILE = os.path.join(CONFIG_DIR, "config.json")
 
 # 语言文件路径 (相对于项目根目录/打包根目录)
 LANG_FILE_REL = os.path.join("assets", "lang.json")
+
+
+def get_version():
+    """读取根目录的 VERSION 文件"""
+    try:
+        # 开发环境
+        version_file = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "VERSION")
+        # 打包环境 (PyInstaller 会把 VERSION 打包进 sys._MEIPASS)
+        if getattr(sys, 'frozen', False):
+            version_file = os.path.join(sys._MEIPASS, "VERSION")
+
+        with open(version_file, "r") as f:
+            return f.read().strip()
+    except:
+        return "1.0.0"
+
+
+APP_VERSION = get_version()

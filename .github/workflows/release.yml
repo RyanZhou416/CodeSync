@@ -42,7 +42,7 @@ jobs:
 
       - name: Build EXE
         run: |
-          pyinstaller --noconsole --onefile --name "CodeSync" --add-data "assets/lang.json;assets" src/main.py
+          pyinstaller --noconsole --onefile --name "CodeSync" --add-data "assets/lang.json;assets" --add-data "VERSION;." src/main.py
 
       - name: Compile Installer (Inno Setup)
         shell: cmd
@@ -122,7 +122,7 @@ jobs:
 
       - name: Build Binary
         run: |
-          pyinstaller --noconsole --onefile --name "CodeSync" --add-data "assets/lang.json:assets" src/main.py
+          pyinstaller --noconsole --onefile --name "CodeSync" --add-data "assets/lang.json:assets" --add-data "VERSION:." src/main.py
           mv dist/CodeSync CodeSync_Linux_amd64.bin
 
       - name: Create .deb package

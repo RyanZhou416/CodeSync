@@ -1,0 +1,45 @@
+name: Auto Tag on Version Change
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'VERSION' # 只有当 VERSION 文件变化时才运行
+
+jobs:
+  auto-tag:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # 需要写权限来推送 Tag
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # 获取完整历史以比较差异
+
+      - name: Read Version
+        id: get_version
+        run: |
+          v=$(cat VERSION)
+          echo "VERSION=$v" >> $GITHUB_ENV
+          echo "Detected version: $v"
+
+      - name: Check if Tag Exists
+        id: check_tag
+        run: |
+          if git rev-parse "v${{ env.VERSION }}" >/dev/null 2>&1; then
+            echo "TAG_EXISTS=true" >> $GITHUB_ENV
+            echo "Tag v${{ env.VERSION }} already exists."
+          else
+            echo "TAG_EXISTS=false" >> $GITHUB_ENV
+            echo "Tag v${{ env.VERSION }} does not exist. Creating..."
+          fi
+
+      - name: Create and Push Tag
+        if: env.TAG_EXISTS == 'false'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a "v${{ env.VERSION }}" -m "Auto-release v${{ env.VERSION }}"
+          git push origin "v${{ env.VERSION }}"
