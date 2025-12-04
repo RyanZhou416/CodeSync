@@ -5,31 +5,14 @@ import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 import requests
 import hashlib
-import fnmatch
 import locale
-import ctypes
-from ctypes import windll, byref, c_int, sizeof
-import sys
 
-# === 系统路径配置 ===
-APP_NAME = "CodeSync"
-# 配置文件存放在 AppData/Roaming/CodeSync
-CONFIG_DIR = os.path.join(os.environ.get('APPDATA', os.path.expanduser('~')), APP_NAME)
-if not os.path.exists(CONFIG_DIR):
-    os.makedirs(CONFIG_DIR)
-CONFIG_FILE = os.path.join(CONFIG_DIR, "config.json")
+# 导入同目录下的模块
+from . import config
+from . import utils
+from . import logic
 
-# 语言文件路径 (exe同级目录)
-if getattr(sys, 'frozen', False):
-    APP_ROOT = os.path.dirname(sys.executable)
-else:
-    APP_ROOT = os.path.dirname(os.path.abspath(__file__))
-LANG_FILE = os.path.join(APP_ROOT, "lang.json")
-
-DEFAULT_IGNORE = {'.git', '.vs', '.idea', '__pycache__', 'node_modules', 'build', 'target', 'bin', 'obj', '.gradle'}
-BINARY_EXTS = {'.png', '.jpg', '.jpeg', '.gif', '.ico', '.exe', '.dll', '.so', '.pdf', '.zip', '.db', '.sqlite', '.pyc',
-               '.class', '.jar', '.webp', '.lib', '.pdb', '.o', '.a', '.mp4'}
-
+# 状态图标
 ICON_UNCHECKED = "☐"
 ICON_CHECKED = "☑"
 ICON_PARTIAL = "⊟"
@@ -50,7 +33,7 @@ class CodeSyncApp:
         # 加载语言包
         self._load_translations()
 
-        # Variables
+        # 变量初始化
         self.name_var = tk.StringVar()
         self.url_var = tk.StringVar(value="https://code.ryan416.com")
         self.path_var = tk.StringVar()
@@ -59,10 +42,12 @@ class CodeSyncApp:
         self.lang_var = tk.StringVar(value="en")
         self.theme_var = tk.StringVar(value="system")
 
+        # 配置加载顺序：本地配置 -> 初始设置 -> 构建UI -> 应用主题 -> 恢复项目
         self._load_local_config()
         self._detect_initial_settings()
 
         self._build_ui()
+        # 强制刷新确保 Windows 句柄存在，以便应用深色标题栏
         self.root.update()
         self._apply_theme()
 
@@ -73,35 +58,73 @@ class CodeSyncApp:
             self.root.after(100, lambda: self.switch_project(None))
 
     def _load_translations(self):
+        # 使用 config 模块获取资源路径
+        lang_path = config.get_resource_path(config.LANG_FILE_REL)
         try:
-            with open(LANG_FILE, 'r', encoding='utf-8') as f:
+            with open(lang_path, 'r', encoding='utf-8') as f:
                 self.translations = json.load(f)
         except Exception as e:
-            messagebox.showerror("Error", f"Failed to load lang.json:\n{e}")
-            self.translations = {"en": {}, "zh": {}}  # fallback
+            # 如果加载失败，提供最基础的英文回退，防止崩溃
+            messagebox.showerror("Error", f"Cannot load languages from:\n{lang_path}\nError: {e}")
+            self.translations = {"en": {}, "zh": {}}
 
     def tr(self, key):
+        """翻译帮助函数"""
         lang = self.lang_var.get()
-        # 默认回退到 en，再找不到回退 key
         dct = self.translations.get(lang, self.translations.get("en", {}))
         return dct.get(key, key)
 
     def _detect_initial_settings(self):
+        # 语言检测
         if "language" in self.all_configs:
             self.lang_var.set(self.all_configs["language"])
         else:
-            sys_lang = locale.getdefaultlocale()[0]
-            if sys_lang and "zh" in sys_lang.lower():
-                self.lang_var.set("zh")
-            else:
+            try:
+                sys_lang = locale.getdefaultlocale()[0]
+                if sys_lang and "zh" in sys_lang.lower():
+                    self.lang_var.set("zh")
+                else:
+                    self.lang_var.set("en")
+            except:
                 self.lang_var.set("en")
 
+        # 主题检测
         if "theme" in self.all_configs:
             self.theme_var.set(self.all_configs["theme"])
         else:
             self.theme_var.set("system")
+
         self._save_local_config()
 
+    # === 配置与重置 ===
+    def _load_local_config(self):
+        if os.path.exists(config.CONFIG_FILE):
+            try:
+                with open(config.CONFIG_FILE, 'r') as f:
+                    self.all_configs = json.load(f)
+            except:
+                self.all_configs = {}
+        self.project_list = self.all_configs.get("projects", {})
+
+    def _save_local_config(self):
+        self.all_configs["projects"] = self.project_list
+        try:
+            with open(config.CONFIG_FILE, 'w') as f:
+                json.dump(self.all_configs, f)
+        except:
+            pass
+
+    def reset_app_config(self):
+        """重置所有设置"""
+        if messagebox.askyesno(self.tr("status_error"), self.tr("msg_confirm_reset")):
+            try:
+                if os.path.exists(config.CONFIG_FILE):
+                    os.remove(config.CONFIG_FILE)
+                self.root.quit()
+            except Exception as e:
+                messagebox.showerror("Error", str(e))
+
+    # === 外观逻辑 ===
     def change_language(self):
         self.all_configs["language"] = self.lang_var.get()
         self._save_local_config()
@@ -112,41 +135,31 @@ class CodeSyncApp:
         self._save_local_config()
         self._apply_theme()
 
-    # === 重置软件配置 ===
-    def reset_app_config(self):
-        if messagebox.askyesno(self.tr("status_error"), self.tr("msg_confirm_reset")):
-            try:
-                if os.path.exists(CONFIG_FILE):
-                    os.remove(CONFIG_FILE)
-                self.root.quit()
-            except Exception as e:
-                messagebox.showerror("Error", str(e))
-
     def _apply_theme(self):
         style = ttk.Style()
         style.theme_use('clam')
+
         mode = self.theme_var.get()
         is_dark = False
+
         if mode == "dark":
             is_dark = True
         elif mode == "system":
-            try:
-                import winreg
-                registry = winreg.ConnectRegistry(None, winreg.HKEY_CURRENT_USER)
-                key = winreg.OpenKey(registry, r'SOFTWARE\Microsoft\Windows\CurrentVersion\Themes\Personalize')
-                val, _ = winreg.QueryValueEx(key, 'AppsUseLightTheme')
-                is_dark = (val == 0)
-            except:
-                is_dark = False
+            # 简易系统主题检测 (仅 Windows)
+            if os.name == 'nt':
+                try:
+                    import winreg
+                    registry = winreg.ConnectRegistry(None, winreg.HKEY_CURRENT_USER)
+                    key = winreg.OpenKey(registry, r'SOFTWARE\Microsoft\Windows\CurrentVersion\Themes\Personalize')
+                    val, _ = winreg.QueryValueEx(key, 'AppsUseLightTheme')
+                    is_dark = (val == 0)
+                except:
+                    pass
 
-        try:
-            hwnd = windll.user32.GetParent(self.root.winfo_id())
-            val = c_int(1 if is_dark else 0)
-            windll.dwmapi.DwmSetWindowAttribute(hwnd, 20, byref(val), 4)  # Win11
-            windll.dwmapi.DwmSetWindowAttribute(hwnd, 19, byref(val), 4)  # Win10
-        except:
-            pass
+        # 调用 utils 里的跨平台安全函数
+        utils.apply_windows_dark_mode(self.root, is_dark)
 
+        # 设置颜色
         if is_dark:
             bg, fg, field, sel = "#2d2d2d", "#ffffff", "#3d3d3d", "#0078d7"
             self.root.configure(bg=bg)
@@ -167,16 +180,20 @@ class CodeSyncApp:
             style.map("TCombobox", fieldbackground=[('readonly', 'white')], selectbackground=[('readonly', '#0078d7')],
                       selectforeground=[('readonly', 'white')])
 
+    # === UI 构建 ===
     def _rebuild_ui(self):
         curr_proj = self.name_var.get()
         for widget in self.root.winfo_children():
             if not isinstance(widget, tk.Menu): widget.destroy()
+
         self.root.title(self.tr("app_title"))
         self._build_ui()
         self._apply_theme()
+
         self._refresh_project_combo()
         if curr_proj in self.project_list:
             self.project_combo.set(curr_proj)
+
         if self.path_var.get():
             self.refresh_tree_structure(keep_state=True)
 
@@ -192,7 +209,7 @@ class CodeSyncApp:
         proj_menu.add_separator()
         proj_menu.add_command(label=self.tr("cmd_clear_cloud"), command=self.clear_cloud_data)
         proj_menu.add_separator()
-        proj_menu.add_command(label=self.tr("cmd_reset_config"), command=self.reset_app_config)  # 新增重置
+        proj_menu.add_command(label=self.tr("cmd_reset_config"), command=self.reset_app_config)
         proj_menu.add_command(label=self.tr("cmd_exit"), command=self.root.quit)
 
         # Edit Menu
@@ -222,7 +239,7 @@ class CodeSyncApp:
         lang_menu.add_radiobutton(label="English", variable=self.lang_var, value="en", command=self.change_language)
         lang_menu.add_radiobutton(label="中文", variable=self.lang_var, value="zh", command=self.change_language)
 
-        # UI Components
+        # Info Frame
         info_frame = ttk.LabelFrame(self.root, text=self.tr("lbl_curr_proj"))
         info_frame.pack(fill="x", padx=10, pady=5)
 
@@ -246,9 +263,11 @@ class CodeSyncApp:
         ttk.Entry(r2, textvariable=self.path_var).pack(side="left", fill="x", expand=True, padx=5)
         ttk.Button(r2, text=self.tr("btn_browse"), command=self.select_folder).pack(side="left")
 
+        # Toolbar
         tool_frame = ttk.Frame(self.root)
         tool_frame.pack(fill="x", padx=10, pady=2)
         ttk.Button(tool_frame, text=self.tr("btn_pull"), command=self.pull_cloud_config).pack(side="left")
+
         ttk.Label(tool_frame, text=self.tr("lbl_sort")).pack(side="right", padx=5)
         self.sort_btn = ttk.Button(tool_frame, text="⬇", width=3, command=self.toggle_sort_dir)
         self.sort_btn.pack(side="right")
@@ -257,51 +276,32 @@ class CodeSyncApp:
         sort_cb.pack(side="right", padx=2)
         sort_cb.bind("<<ComboboxSelected>>", self.on_sort_change)
 
+        # Treeview
         tree_frame = ttk.Frame(self.root)
         tree_frame.pack(fill="both", expand=True, padx=10, pady=5)
+
         self.tree = ttk.Treeview(tree_frame, columns=("status"), selectmode="extended")
+
         self.tree.column("#0", width=600, minwidth=150, anchor="w", stretch=True)
         self.tree.heading("#0", text=self.tr("col_file"))
+
         self.tree.column("status", width=80, minwidth=60, anchor="center", stretch=False)
         self.tree.heading("status", text=self.tr("col_check"))
+
         self.tree.pack(side="left", fill="both", expand=True)
         sb = ttk.Scrollbar(tree_frame, orient="vertical", command=self.tree.yview)
         sb.pack(side="right", fill="y")
         self.tree.configure(yscrollcommand=sb.set)
         self.tree.bind("<Button-1>", self.on_click)
 
+        # Bottom
         b_frame = ttk.Frame(self.root)
         b_frame.pack(fill="x", padx=10, pady=10)
         self.status_lbl = ttk.Label(b_frame, text=self.tr("status_ready"))
         self.status_lbl.pack(side="left")
         ttk.Button(b_frame, text=self.tr("btn_sync"), command=self.sync_logic).pack(side="right")
 
-    # === Logic (省略重复部分，保持之前的逻辑不变) ===
-    # 这里的代码与 CodeSync Final Polish (v6) 的逻辑部分完全一致
-    # 为节省篇幅，请将 v6 版本中 "Logic" 注释下方的所有函数 (从 _load_gitignore 到 select_folder) 复制到这里
-    # 注意：_load_local_config 和 _save_local_config 不需要改，因为 CONFIG_FILE 已经在顶部定义好了
-    # 注意：要确保 sync_logic 等函数能正确运行
-
-    def _load_gitignore(self, root_path):
-        patterns = set(DEFAULT_IGNORE)
-        git_file = os.path.join(root_path, ".gitignore")
-        if os.path.exists(git_file):
-            try:
-                with open(git_file, 'r', encoding='utf-8') as f:
-                    for line in f:
-                        l = line.strip()
-                        if l and not l.startswith('#'): patterns.add(l.rstrip('/'))
-            except:
-                pass
-        self.gitignore_patterns = list(patterns)
-
-    def _is_ignored(self, filename, rel_path):
-        if filename in self.gitignore_patterns: return True
-        for p in self.gitignore_patterns:
-            if fnmatch.fnmatch(filename, p): return True
-            if p in rel_path.split(os.sep): return True
-        return False
-
+    # === Tree & Logic ===
     def refresh_tree_structure(self, keep_state=False):
         current_selections = set()
         if keep_state:
@@ -318,26 +318,36 @@ class CodeSyncApp:
         root = self.path_var.get()
         if not root or not os.path.exists(root): return
 
-        self._load_gitignore(root)
+        # 使用 logic 模块加载 ignore
+        self.gitignore_patterns = logic.load_gitignore(root, config.DEFAULT_IGNORE)
         self._populate(root, "", current_selections)
         self._recalc_folder_states()
 
     def _populate(self, current_path, parent_uid, selections):
-        items = self._get_sorted_items(current_path)
+        # 使用 logic 模块排序
+        items = logic.get_sorted_items(current_path, self.sort_mode.get(), self.sort_desc.get())
         root_abs = self.path_var.get()
+
         for item in items:
             full = os.path.join(current_path, item)
             rel = os.path.relpath(full, root_abs)
-            if self._is_ignored(item, rel): continue
+
+            # 使用 logic 模块检查 ignore
+            if logic.is_ignored(item, rel, self.gitignore_patterns):
+                continue
+
             is_dir = os.path.isdir(full)
             ext = os.path.splitext(item)[1].lower()
-            is_bin = ext in BINARY_EXTS
+            is_bin = ext in config.BINARY_EXTS
+
             node_type = "dir" if is_dir else ("binary" if is_bin else "file")
             state = 0
             if node_type == 'file' and rel in selections: state = 1
+
             status_text = self._get_status_icon(state, node_type)
             uid = self.tree.insert(parent_uid, "end", text=f" {item}", values=(status_text,), open=False)
             self.node_data[uid] = {"path": full, "type": node_type, "state": state, "name": item}
+
             if node_type == 'dir': self._populate(full, uid, selections)
 
     def _get_status_icon(self, state, ntype):
@@ -413,30 +423,74 @@ class CodeSyncApp:
     def on_sort_change(self, e):
         self.refresh_tree_structure(keep_state=True)
 
-    def _get_sorted_items(self, path):
+    def select_folder(self):
+        p = filedialog.askdirectory()
+        if p: self.path_var.set(p); self.refresh_tree_structure()
+
+    def _refresh_project_combo(self):
+        self.project_combo['values'] = list(self.project_list.keys())
+
+    def save_local_project_info(self):
+        n, p = self.name_var.get().strip(), self.path_var.get()
+        if n and p:
+            self.project_list[n] = {"url": self.url_var.get(), "path": p}
+            self.all_configs["last_active"] = n
+            self._save_local_config();
+            self._refresh_project_combo();
+            self.project_combo.set(n)
+            self.status_lbl.config(text=self.tr("msg_saved"))
+
+    def delete_local_project(self):
+        n = self.project_combo.get()
+        if n in self.project_list:
+            if messagebox.askyesno(self.tr("status_error"), self.tr("msg_confirm_del").format(n)):
+                del self.project_list[n]
+                self.name_var.set("");
+                self.path_var.set("");
+                self.tree.delete(*self.tree.get_children())
+                self._save_local_config();
+                self._refresh_project_combo();
+                self.project_combo.set("")
+
+    def switch_project(self, e):
+        n = self.project_combo.get()
+        if n in self.project_list:
+            c = self.project_list[n]
+            self.name_var.set(n);
+            self.url_var.set(c.get("url", ""));
+            self.path_var.set(c.get("path", ""))
+            self.refresh_tree_structure();
+            self.pull_cloud_config()
+            self.all_configs["last_active"] = n;
+            self._save_local_config()
+
+    def copy_url(self):
+        self.root.clipboard_clear(); self.root.clipboard_append(f"{self.url_var.get()}/{self.name_var.get()}")
+
+    def open_url(self):
+        webbrowser.open(f"{self.url_var.get()}/{self.name_var.get()}")
+
+    def pull_cloud_config(self):
+        u, n = self.url_var.get().strip().rstrip("/"), self.name_var.get().strip()
+        if not u or not n: return
+        self.status_lbl.config(text=self.tr("status_pulling"), foreground="blue");
+        self.root.update()
         try:
-            items = os.listdir(path)
+            r = requests.get(f"{u}/config/{n}", timeout=3)
+            if r.status_code == 200:
+                s = set(r.json())
+                root = self.path_var.get()
+                for uid, d in self.node_data.items():
+                    if d['type'] == 'file':
+                        rel = os.path.relpath(d['path'], root).replace("\\", "/")
+                        d['state'] = 1 if (rel in s or rel.replace("/", "\\") in s) else 0
+                        self.tree.item(uid, values=(self._get_status_icon(d['state'], 'file'),))
+                self._recalc_folder_states()
+                self.status_lbl.config(text=self.tr("status_restored"), foreground="green")
+            else:
+                self.status_lbl.config(text="No Cloud Config", foreground="orange")
         except:
-            return []
-        f_objs = []
-        mode = self.sort_mode.get()
-        rev = self.sort_desc.get()
-        for item in items:
-            full = os.path.join(path, item)
-            mtime, ext = 0, os.path.splitext(item)[1].lower()
-            if mode == 'time':
-                try:
-                    mtime = os.stat(full).st_mtime
-                except:
-                    pass
-            f_objs.append({'name': item, 'd': os.path.isdir(full), 't': mtime, 'e': ext})
-        if mode == 'name':
-            f_objs.sort(key=lambda x: (not x['d'], x['name'].lower()), reverse=rev)
-        elif mode == 'time':
-            f_objs.sort(key=lambda x: x['t'], reverse=rev)
-        elif mode == 'type':
-            f_objs.sort(key=lambda x: (x['e'], x['name'].lower()), reverse=rev)
-        return [x['name'] for x in f_objs]
+            pass
 
     def sync_logic(self):
         self.save_local_project_info()
@@ -510,95 +564,3 @@ class CodeSyncApp:
             except:
                 pass
             messagebox.showinfo(self.tr("status_done"), self.tr("msg_done"))
-
-    def _load_local_config(self):
-        if os.path.exists(CONFIG_FILE):
-            try:
-                with open(CONFIG_FILE, 'r') as f:
-                    self.all_configs = json.load(f)
-            except:
-                self.all_configs = {}
-        self.project_list = self.all_configs.get("projects", {})
-
-    def _save_local_config(self):
-        self.all_configs["projects"] = self.project_list
-        try:
-            with open(CONFIG_FILE, 'w') as f:
-                json.dump(self.all_configs, f)
-        except:
-            pass
-
-    def _refresh_project_combo(self):
-        self.project_combo['values'] = list(self.project_list.keys())
-
-    def save_local_project_info(self):
-        n, p = self.name_var.get().strip(), self.path_var.get()
-        if n and p:
-            self.project_list[n] = {"url": self.url_var.get(), "path": p}
-            self.all_configs["last_active"] = n
-            self._save_local_config();
-            self._refresh_project_combo();
-            self.project_combo.set(n)
-            self.status_lbl.config(text=self.tr("msg_saved"))
-
-    def delete_local_project(self):
-        n = self.project_combo.get()
-        if n in self.project_list:
-            if messagebox.askyesno(self.tr("status_error"), self.tr("msg_confirm_del").format(n)):
-                del self.project_list[n]
-                self.name_var.set("");
-                self.path_var.set("");
-                self.tree.delete(*self.tree.get_children())
-                self._save_local_config();
-                self._refresh_project_combo();
-                self.project_combo.set("")
-
-    def switch_project(self, e):
-        n = self.project_combo.get()
-        if n in self.project_list:
-            c = self.project_list[n]
-            self.name_var.set(n);
-            self.url_var.set(c.get("url", ""));
-            self.path_var.set(c.get("path", ""))
-            self.refresh_tree_structure();
-            self.pull_cloud_config()
-            self.all_configs["last_active"] = n;
-            self._save_local_config()
-
-    def pull_cloud_config(self):
-        u, n = self.url_var.get().strip().rstrip("/"), self.name_var.get().strip()
-        if not u or not n: return
-        self.status_lbl.config(text=self.tr("status_pulling"), foreground="blue");
-        self.root.update()
-        try:
-            r = requests.get(f"{u}/config/{n}", timeout=3)
-            if r.status_code == 200:
-                s = set(r.json())
-                root = self.path_var.get()
-                for uid, d in self.node_data.items():
-                    if d['type'] == 'file':
-                        rel = os.path.relpath(d['path'], root).replace("\\", "/")
-                        d['state'] = 1 if (rel in s or rel.replace("/", "\\") in s) else 0
-                        self.tree.item(uid, values=(self._get_status_icon(d['state'], 'file'),))
-                self._recalc_folder_states()
-                self.status_lbl.config(text=self.tr("status_restored"), foreground="green")
-            else:
-                self.status_lbl.config(text="No Cloud Config", foreground="orange")
-        except:
-            pass
-
-    def copy_url(self):
-        self.root.clipboard_clear(); self.root.clipboard_append(f"{self.url_var.get()}/{self.name_var.get()}")
-
-    def open_url(self):
-        webbrowser.open(f"{self.url_var.get()}/{self.name_var.get()}")
-
-    def select_folder(self):
-        p = filedialog.askdirectory()
-        if p: self.path_var.set(p); self.refresh_tree_structure()
-
-
-if __name__ == "__main__":
-    root = tk.Tk()
-    app = CodeSyncApp(root)
-    root.mainloop()

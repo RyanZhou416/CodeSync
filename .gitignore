@@ -1,0 +1,94 @@
+# ==========================
+# Python 编译与缓存
+# ==========================
+__pycache__/
+*.py[cod]
+*$py.class
+
+# ==========================
+# 虚拟环境 (Virtual Environments)
+# ==========================
+# 常见的虚拟环境目录名
+venv/
+.venv/
+env/
+.env/
+venv.bak/
+
+# ==========================
+# PyInstaller 打包生成文件
+# ==========================
+# 构建过程中的临时文件
+build/
+# 最终生成的可执行文件目录
+dist/
+# PyInstaller 生成的 spec 文件 (如果你主要靠脚本构建，这些自动生成的可以忽略)
+*.spec
+
+# ==========================
+# Inno Setup 打包生成文件
+# ==========================
+# Inno Setup 默认的输出目录
+Output/
+# 编译过程中的临时文件
+*.tmp
+
+# ==========================
+# IDE 与 编辑器配置
+# ==========================
+# PyCharm / IntelliJ IDEA
+.idea/
+# VS Code
+.vscode/
+# Sublime Text
+*.sublime-workspace
+*.sublime-project
+
+# ==========================
+# 操作系统生成文件
+# ==========================
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Linux
+*~
+
+# ==========================
+# Docker
+# ==========================
+# 如果你有本地映射的数据卷目录，可以在这里忽略
+server/data/
+.dockerignore
+
+# ==========================
+# CodeSync 项目特定文件
+# ==========================
+# 1. 本地配置文件 (存放了用户的主题、语言、最近项目等隐私设置，不应上传)
+codesync_config.json
+
+# 2. 也是本地配置的旧版本名称 (以防万一)
+config.json
+
+# 3. 如果服务端启用了文件持久化存储，忽略存储目录
+server/project_store/
+server/hash_cache/
+
+# 4. 忽略本地的日志文件
+*.log
+
+# ==========================
+# 保护性忽略 (防止误传密钥等)
+# ==========================
+.env
+.secrets
+key.pem
+cert.pem

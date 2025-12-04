@@ -1,0 +1,3 @@
+requests
+darkdetect  # 可选，如果你想自动检测系统主题
+pyinstaller # 仅开发环境需要

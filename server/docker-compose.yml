@@ -1,0 +1,12 @@
+version: '3.8'
+
+services:
+  codesync-server:
+    build: .
+    container_name: codesync_server
+    restart: always
+    ports:
+      - "8000:8000"
+    # 如果未来你想把数据保存到磁盘（修改 server.py 写入文件），可以取消下面 volumes 的注释
+    # volumes:
+    #   - ./data:/app/data
