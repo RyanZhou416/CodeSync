@@ -1,37 +1,48 @@
 import sys
 import os
 import tkinter as tk
+import tkinter.messagebox  # 显式导入
 
-# === 核心修复：强制设置搜索路径 ===
-# 这一步必须在所有 from ... import ... 之前执行
 
-# 1. 获取 main.py 所在的真实目录
-if getattr(sys, 'frozen', False):
-    # 如果是打包后的 exe (PyInstaller)
-    # sys._MEIPASS 是解压后的临时目录
-    app_path = sys._MEIPASS
-else:
-    # 如果是本地源代码运行
-    app_path = os.path.dirname(os.path.abspath(__file__))
+# === 核心路径修复 ===
+def setup_path():
+    """强制将当前运行目录加入系统路径"""
+    if getattr(sys, 'frozen', False):
+        # 如果是打包后的 exe (PyInstaller)
+        # 资源文件会被解压到 sys._MEIPASS
+        base_path = sys._MEIPASS
+    else:
+        # 如果是本地代码运行
+        base_path = os.path.dirname(os.path.abspath(__file__))
 
-# 2. 将该目录插入到系统搜索路径的【第一位】
-# 使用 insert(0, ...) 确保优先加载我们自己的文件，而不是系统的同名库
-if app_path not in sys.path:
-    sys.path.insert(0, app_path)
+    # 将该目录插入到 sys.path 的最前面
+    if base_path not in sys.path:
+        sys.path.insert(0, base_path)
 
-# === 现在再导入其他模块，就一定能找到了 ===
+    return base_path
+
+
+# 1. 先执行路径设置
+current_path = setup_path()
+
+# 2. 然后再导入同级模块
 try:
+    # 直接 import，不要用 .gui
     from gui import CodeSyncApp
 except ImportError as e:
-    # 如果还是报错，弹窗提示路径信息，方便调试
-    tk.messagebox.showerror("Startup Error",
-        f"Failed to import modules.\n\nSearch Path:\n{sys.path}\n\nError:\n{e}")
+    # 如果出错，显示详细的调试信息
+    root = tk.Tk()
+    root.withdraw()
+    err_msg = f"启动错误: {e}\n\nSearch Path:\n{sys.path}\n\nBase Path:\n{current_path}"
+    tkinter.messagebox.showerror("Error", err_msg)
     sys.exit(1)
+
 
 def main():
     root = tk.Tk()
     app = CodeSyncApp(root)
     root.mainloop()
+
 
 if __name__ == "__main__":
     main()
