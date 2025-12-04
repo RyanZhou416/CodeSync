@@ -55,7 +55,7 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 ; 核心修改：在这里添加开始菜单的复选框
 ; Flags: checked 表示默认勾选
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"
-Name: "startmenuicon"; Description: "创建开始菜单快捷方式"; GroupDescription: "{cm:AdditionalIcons}"
+Name: "startmenuicon"; Description: "{cm:CreateStartMenuIcon}"; GroupDescription: "{cm:AdditionalIcons}"
 
 [Files]
 Source: "..\dist\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
@@ -73,6 +73,10 @@ Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: de
 
 [Run]
 Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#MyAppName}}"; Flags: nowait postinstall skipifsilent
+
+[CustomMessages]
+english.CreateStartMenuIcon=Create a Start Menu shortcut
+chinesesimplified.CreateStartMenuIcon=创建开始菜单快捷方式
 
 [Code]
 function InitializeUninstall(): Boolean;
