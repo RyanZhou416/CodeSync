@@ -3,7 +3,7 @@ name: Publish Release
 on:
   push:
     branches: [ "master" ] # 如果你是 master 分支，请在这里改成 "master"
-    # paths: [ "VERSION" ]  <-- 暂时注释掉这一行
+    paths: [ "VERSION" ]
     tags: [ "v*" ]
   workflow_dispatch: # 保持这个，允许手动点按钮
 
