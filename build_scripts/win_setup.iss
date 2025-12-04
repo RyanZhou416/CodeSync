@@ -6,7 +6,7 @@
 #endif
 
 #define MyAppName "代码同步 (CodeSync)"
-#define MyAppVersion "1.0.6"
+#define MyAppVersion "1.0.7"
 #define MyAppPublisher "Ryan"
 #define MyAppExeName "CodeSync.exe"
 
@@ -36,12 +36,10 @@ Compression=lzma
 SolidCompression=yes
 SetupIconFile=..\assets\icon.ico
 
-; === 4. 关键修复：强制显示开始菜单页面 ===
-; 允许用户勾选“不创建开始菜单文件夹”
-AllowNoIcons=yes
-; 确保不禁用开始菜单页面
-DisableProgramGroupPage=no
-; 确保不禁用目录选择页面
+; === 4. 界面设置 ===
+; 核心修改：隐藏原本的“选择开始菜单文件夹”页面
+DisableProgramGroupPage=yes
+; 仍然允许选择安装目录
 DisableDirPage=no
 
 ; 卸载设置
@@ -52,22 +50,25 @@ RestartApplications=no
 Name: "chinesesimplified"; MessagesFile: "ChineseSimplified.isl"
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
+; === 5. 任务 (附加任务页面) ===
 [Tasks]
-; 桌面快捷方式 (默认勾选)
+; 核心修改：在这里添加开始菜单的复选框
+; Flags: checked 表示默认勾选
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"
+Name: "startmenuicon"; Description: "创建开始菜单快捷方式"; GroupDescription: "{cm:AdditionalIcons}"
 
 [Files]
 Source: "..\dist\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\assets\lang.json"; DestDir: "{app}\assets"; Flags: ignoreversion
 
 [Icons]
-; === 5. 定义快捷方式 ===
-; {group} 指代用户在安装向导中选择的开始菜单文件夹
-; 只有当用户没有勾选“不创建开始菜单文件夹”时，这些图标才会被创建
-Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
-Name: "{group}\{cm:UninstallProgram,{#MyAppName}}"; Filename: "{uninstallexe}"
+; === 6. 图标定义 ===
+; 核心修改：增加 Tasks: startmenuicon 限制
+; 只有当用户勾选了上面的 startmenuicon 任务时，才会创建这些图标
+Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: startmenuicon
+Name: "{group}\{cm:UninstallProgram,{#MyAppName}}"; Filename: "{uninstallexe}"; Tasks: startmenuicon
 
-; 桌面快捷方式 (依赖 Tasks)
+; 桌面快捷方式
 Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
 
 [Run]
