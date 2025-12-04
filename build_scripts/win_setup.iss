@@ -29,7 +29,6 @@ CloseApplications=yes
 RestartApplications=no
 
 [Languages]
-; 确保 ChineseSimplified.isl 在 build_scripts 目录下
 Name: "chinesesimplified"; MessagesFile: "ChineseSimplified.isl"
 Name: "english"; MessagesFile: "compiler:Default.isl"
 

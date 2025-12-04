@@ -1,6 +1,5 @@
 name: Publish Release
 
-# 只有在推送 v* 标签时触发 (例如 git tag v1.0.0 -> git push origin v1.0.0)
 on:
   push:
     tags:
@@ -8,17 +7,22 @@ on:
 
 permissions:
   contents: write
-  packages: write # 允许上传 Docker 镜像
+  packages: write
 
 jobs:
   # ===================================================
-  # 1. Windows 构建 (x64 和 x86 安装包)
+  # 1. Windows 构建 (x64 和 x86)
   # ===================================================
   build-windows:
     runs-on: windows-latest
     strategy:
+      fail-fast: false # 一个失败不影响其他
       matrix:
-        arch: [x64, x86] # 矩阵构建
+        include:
+          - arch: x64
+            py_arch: 'x64'
+          - arch: x86
+            py_arch: 'x86'
     steps:
       - uses: actions/checkout@v4
 
@@ -26,7 +30,7 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.9'
-          architecture: ${{ matrix.arch }} # 关键：切换 Python 架构
+          architecture: ${{ matrix.py_arch }}
 
       - name: Install dependencies
         run: |
@@ -37,12 +41,12 @@ jobs:
         run: choco install innosetup
 
       - name: Build EXE
-        # 注意：这里我们加上架构后缀
         run: |
           pyinstaller --noconsole --onefile --name "CodeSync" --add-data "assets/lang.json;assets" src/main.py
 
+      # 关键修复：使用 cmd shell 避免 PowerShell 解析错误
       - name: Compile Installer (Inno Setup)
-        # 使用 ISCC 命令行工具，并通过 /D 定义输出文件名
+        shell: cmd
         run: |
           "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" /DMyOutputFilename="CodeSync_Setup_Win_${{ matrix.arch }}" build_scripts\win_setup.iss
 
@@ -53,18 +57,10 @@ jobs:
           path: Output/*.exe
 
   # ===================================================
-  # 2. macOS 构建 (Intel 和 Apple Silicon)
+  # 2. macOS 构建
   # ===================================================
   build-macos:
-    name: build-macos-${{ matrix.arch }}
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        include:
-          - os: macos-13      # Intel (x86_64)
-            arch: x86_64
-          - os: macos-latest  # Apple Silicon (arm64)
-            arch: arm64
+    runs-on: macos-latest # 使用最新 mac 环境
     steps:
       - uses: actions/checkout@v4
 
@@ -73,36 +69,41 @@ jobs:
         with:
           python-version: '3.9'
 
+      # 关键修复：create-dmg 是 brew 包，不是 pip 包
       - name: Install dependencies
         run: |
+          brew install create-dmg
           pip install -r requirements.txt
-          pip install pyinstaller create-dmg
+          pip install pyinstaller
 
       - name: Build .app
         run: |
-          pyinstaller --noconsole --windowed --name "CodeSync" --add-data "assets/lang.json:assets" src/main.py
+          # 确保脚本有执行权限
+          chmod +x build_scripts/mac_build.sh
+          # 直接调用我们写好的脚本
+          sh build_scripts/mac_build.sh
 
       - name: Create DMG
         run: |
-          # 创建一个临时文件夹用来做 DMG 根目录
-          mkdir -p dmg_root
-          cp -r "dist/CodeSync.app" dmg_root/
-          # 简单的 create-dmg 命令
+          # 确保 dist 目录存在
+          ls -R dist/
+          # 使用 create-dmg 打包
           create-dmg \
             --volname "CodeSync Installer" \
             --window-pos 200 120 \
             --window-size 800 400 \
-            "CodeSync_Mac_${{ matrix.arch }}.dmg" \
-            "dmg_root/"
+            --app-drop-link 600 185 \
+            "CodeSync_Mac_Universal.dmg" \
+            "dist/CodeSync.app"
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: dmg-macos-${{ matrix.arch }}
+          name: dmg-macos-universal
           path: "*.dmg"
 
   # ===================================================
-  # 3. Linux 构建 (.deb 和 Binary)
+  # 3. Linux 构建
   # ===================================================
   build-linux:
     runs-on: ubuntu-latest
@@ -122,19 +123,19 @@ jobs:
       - name: Build Binary
         run: |
           pyinstaller --noconsole --onefile --name "CodeSync" --add-data "assets/lang.json:assets" src/main.py
-          mv dist/CodeSync CodeSync_Linux_x86_64.bin
+          mv dist/CodeSync CodeSync_Linux_amd64.bin
 
-      # 简单的打包成 .deb (这是最通用的 Linux 安装包)
       - name: Create .deb package
         run: |
           mkdir -p deb_package/usr/local/bin
           mkdir -p deb_package/DEBIAN
-          cp CodeSync_Linux_x86_64.bin deb_package/usr/local/bin/codesync
+          cp CodeSync_Linux_amd64.bin deb_package/usr/local/bin/codesync
           chmod +x deb_package/usr/local/bin/codesync
           
           # 创建 control 文件
           echo "Package: codesync" > deb_package/DEBIAN/control
-          echo "Version: ${{ github.ref_name }}" | sed 's/v//' >> deb_package/DEBIAN/control
+          # 处理版本号，移除 'v' 前缀
+          echo "Version: $(echo ${{ github.ref_name }} | sed 's/v//')" >> deb_package/DEBIAN/control
           echo "Architecture: amd64" >> deb_package/DEBIAN/control
           echo "Maintainer: Ryan" >> deb_package/DEBIAN/control
           echo "Description: CodeSync Client" >> deb_package/DEBIAN/control
@@ -164,13 +165,13 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract metadata (tags, labels)
+      - name: Extract metadata
         id: meta
         uses: docker/metadata-action@v5
         with:
           images: ghcr.io/${{ github.repository }}/codesync-server
 
-      - name: Build and push Docker image
+      - name: Build and push
         uses: docker/build-push-action@v5
         with:
           context: ./server
@@ -179,11 +180,13 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
 
   # ===================================================
-  # 5. 发布 Release (汇总所有文件)
+  # 5. 发布 Release
   # ===================================================
   release:
     needs: [build-windows, build-macos, build-linux, build-docker]
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - name: Download Windows Artifacts
         uses: actions/download-artifact@v4
@@ -203,7 +206,7 @@ jobs:
           name: linux-packages
 
       - name: Create Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           files: |
             *.exe

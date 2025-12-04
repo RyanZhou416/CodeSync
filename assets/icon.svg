@@ -1,0 +1,38 @@
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bgGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#2563EB;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#1E40AF;stop-opacity:1" />
+    </linearGradient>
+    <filter id="dropShadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="10"/>
+      <feOffset dx="0" dy="10" result="offsetblur"/>
+      <feComponentTransfer>
+        <feFuncA type="linear" slope="0.3"/>
+      </feComponentTransfer>
+      <feMerge>
+        <feMergeNode/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <rect x="0" y="0" width="512" height="512" rx="120" ry="120" fill="url(#bgGradient)" />
+
+  <path d="M368,320 H144 C108.65,320 80,291.35 80,256 C80,223.7 104.1,196.9 135.4,192.6 C143.4,147.3 182.9,112 230,112 C281.3,112 323.8,148.6 331.1,197.4 C359.8,203.7 380,229.2 380,258 C380,291.1 352.9,320 318,320 L368,320 C403.35,320 432,291.35 432,256 C432,223.7 407.9,196.9 376.6,192.6 C368.6,147.3 329.1,112 282,112 C230.7,112 188.2,148.6 180.9,197.4 C152.2,203.7 132,229.2 132,258 C132,291.1 159.1,320 194,320 Z"
+        fill="#FFFFFF" opacity="0.2" transform="translate(0, 20) scale(0.95)"/>
+
+  <g transform="translate(256, 256) scale(1.1)">
+    <path d="M112,64 H-112 C-147.35,64 -176,35.35 -176,0 C-176,-32.3 -151.9,-59.1 -120.6,-63.4 C-112.6,-108.7 -73.1,-144 -26,-144 C25.3,-144 67.8,-107.4 75.1,-58.6 C103.8,-52.3 124,-26.8 124,2 C124,35.1 96.9,64 62,64 Z"
+          fill="#FFFFFF" filter="url(#dropShadow)" />
+
+    <path d="M-50,-10 A40,40 0 0,1 50,-10" fill="none" stroke="#2563EB" stroke-width="12" stroke-linecap="round" />
+    <path d="M50,10 A40,40 0 0,1 -50,10" fill="none" stroke="#2563EB" stroke-width="12" stroke-linecap="round" />
+    <path d="M50,-10 L60,-20 L60,0 Z" fill="#2563EB" transform="translate(-5,0)"/>
+    <path d="M-50,10 L-60,20 L-60,0 Z" fill="#2563EB" transform="translate(5,0)"/>
+
+    <path d="M-25,-15 L-40,0 L-25,15" fill="none" stroke="#2563EB" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M25,-15 L40,0 L25,15" fill="none" stroke="#2563EB" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+    <line x1="10" y1="-20" x2="-10" y2="20" stroke="#2563EB" stroke-width="8" stroke-linecap="round" />
+  </g>
+</svg>
