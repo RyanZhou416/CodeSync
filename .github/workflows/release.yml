@@ -13,7 +13,7 @@ jobs:
   # ===================================================
   # 1. Windows 构建 (x64 和 x86)
   # ===================================================
-build-windows:
+  build-windows:
     runs-on: windows-latest
     strategy:
       fail-fast: false
