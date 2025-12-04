@@ -8,9 +8,9 @@ import hashlib
 import locale
 
 # 导入同目录下的模块
-from . import config
-from . import utils
-from . import logic
+import config
+import utils
+import logic
 
 # 状态图标
 ICON_UNCHECKED = "☐"

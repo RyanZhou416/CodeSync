@@ -13,10 +13,10 @@ jobs:
   # ===================================================
   # 1. Windows 构建 (x64 和 x86)
   # ===================================================
-  build-windows:
+build-windows:
     runs-on: windows-latest
     strategy:
-      fail-fast: false # 一个失败不影响其他
+      fail-fast: false
       matrix:
         include:
           - arch: x64
@@ -44,11 +44,11 @@ jobs:
         run: |
           pyinstaller --noconsole --onefile --name "CodeSync" --add-data "assets/lang.json;assets" src/main.py
 
-      # 关键修复：使用 cmd shell 避免 PowerShell 解析错误
       - name: Compile Installer (Inno Setup)
         shell: cmd
+        # 这里传入了 MyAppArch 参数
         run: |
-          "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" /DMyOutputFilename="CodeSync_Setup_Win_${{ matrix.arch }}" build_scripts\win_setup.iss
+          "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" /DMyOutputFilename="CodeSync_Setup_Win_${{ matrix.arch }}" /DMyAppArch="${{ matrix.arch }}" build_scripts\win_setup.iss
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
