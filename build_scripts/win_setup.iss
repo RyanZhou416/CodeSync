@@ -1,13 +1,12 @@
 ; 脚本位置：CodeSync/build_scripts/win_setup.iss
 
 ; === 1. 接收命令行传来的参数 ===
-; 默认值设为 x64，方便本地测试。在 GitHub Actions 中会被覆盖。
 #ifndef MyAppArch
   #define MyAppArch "x64"
 #endif
 
 #define MyAppName "代码同步 (CodeSync)"
-#define MyAppVersion "1.0.2"
+#define MyAppVersion "1.0.3"
 #define MyAppPublisher "Ryan"
 #define MyAppExeName "CodeSync.exe"
 
@@ -18,17 +17,15 @@ AppVersion={#MyAppVersion}
 AppPublisher={#MyAppPublisher}
 DefaultGroupName=CodeSync
 
-; === 2. 核心修复：根据架构动态调整安装目录 ===
-; 如果传入的是 x64，开启 64 位安装模式
+; === 2. 架构设置 ===
 #if MyAppArch == "x64"
   ArchitecturesAllowed=x64
   ArchitecturesInstallIn64BitMode=x64
-  ; 在 64 位模式下，{autopf} 会自动指向 C:\Program Files
 #endif
 
 DefaultDirName={autopf}\CodeSync
 
-; === 3. 输出文件名设置 ===
+; === 3. 输出设置 ===
 #ifndef MyOutputFilename
   #define MyOutputFilename "CodeSync_Setup"
 #endif
@@ -37,13 +34,16 @@ OutputDir=..\Output
 
 Compression=lzma
 SolidCompression=yes
-; 图标 (确保 assets 文件夹里有 icon.ico)
 SetupIconFile=..\assets\icon.ico
 
-; === 4. 界面设置 ===
-; 允许用户在安装过程中更改设置
+; === 4. 关键修复：让用户选择开始菜单 ===
+; 允许用户在安装时选择“不创建开始菜单文件夹”
+AllowNoIcons=yes
+; 确保显示“选择开始菜单文件夹”的页面
 DisableProgramGroupPage=no
+; 确保显示“选择安装目录”的页面
 DisableDirPage=no
+
 ; 卸载相关
 CloseApplications=yes
 RestartApplications=no
@@ -52,33 +52,28 @@ RestartApplications=no
 Name: "chinesesimplified"; MessagesFile: "ChineseSimplified.isl"
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
-; === 5. 任务 (勾选框) ===
-; 这里定义安装向导中的“附加任务”页面
 [Tasks]
-; 创建桌面快捷方式 (Flags: unchecked 表示默认不勾选，checked 表示默认勾选)
-Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}";
-; 创建开始菜单文件夹
-; Inno Setup 默认会创建开始菜单文件夹，除非在这里或者 [Setup] 禁止。
-; 但如果我们要一个额外的“快速启动栏”或者其他，可以在这里加。
-; 通常开始菜单入口由 [Icons] 控制，不需要在这里作为一个 Task，除非你想让用户选择“是否创建”。
+; 桌面快捷方式 (默认勾选)
+Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"
 
 [Files]
 Source: "..\dist\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\assets\lang.json"; DestDir: "{app}\assets"; Flags: ignoreversion
 
 [Icons]
-; 主菜单快捷方式 (始终创建)
+; === 5. 定义快捷方式 ===
+; {group} 代表用户在安装界面选择的“开始菜单文件夹”
+; 如果用户勾选了“不创建开始菜单文件夹”，这些图标将不会被创建
 Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
-; 卸载程序快捷方式
 Name: "{group}\{cm:UninstallProgram,{#MyAppName}}"; Filename: "{uninstallexe}"
-; 桌面快捷方式 (仅当用户勾选了 desktopicon 任务时创建)
+
+; 桌面快捷方式 (关联到上面的 Tasks)
 Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
 
 [Run]
 Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#MyAppName}}"; Flags: nowait postinstall skipifsilent
 
 [Code]
-// 保持之前的卸载逻辑不变
 function InitializeUninstall(): Boolean;
 var
   ErrorCode: Integer;
