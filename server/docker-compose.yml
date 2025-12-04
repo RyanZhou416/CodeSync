@@ -2,12 +2,8 @@ version: '3.8'
 
 services:
   codesync-server:
-    # 修改这里：指向 GitHub Container Registry (ghcr.io)
-    # 格式：ghcr.io/你的用户名/镜像名:标签
     image: ghcr.io/ryanzhou416/codesync/codesync-server:latest
     container_name: codesync_server
     restart: always
     ports:
       - "8000:8000"
-    # volumes:
-    #   - ./data:/app/data
