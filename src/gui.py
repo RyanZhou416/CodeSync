@@ -46,6 +46,7 @@ class CodeSyncApp:
         self._load_local_config()
         self._detect_initial_settings()
 
+        self.root.title(self.tr("app_title"))
         self._build_ui()
         # 强制刷新确保 Windows 句柄存在，以便应用深色标题栏
         self.root.update()
