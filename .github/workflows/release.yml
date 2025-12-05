@@ -93,7 +93,6 @@ jobs:
           pyinstaller --noconsole --windowed --name "CodeSync" --paths "src" --add-data "assets/lang.json:assets" --add-data "VERSION:." src/main.py
 
       - name: Create DMG
-        # 核心修改：在文件名中加入版本号变量
         run: |
           VERSION="${{ needs.prepare.outputs.version }}"
           DMG_NAME="CodeSync_Mac_${VERSION}_Universal.dmg"
