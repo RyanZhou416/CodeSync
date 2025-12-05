@@ -42,6 +42,8 @@ if exist "CodeSync.spec" del "CodeSync.spec"
 :: --paths "src": 告诉 PyInstaller 去 src 目录下找 import 的模块
 echo.
 echo [3/4] Building EXE...
+--icon "assets\icon.ico"
+--add-data "assets;assets"
 "%PY_CMD%" -m PyInstaller --noconsole --onefile --name "CodeSync" --clean ^
     --paths "src" ^
     --add-data "assets/lang.json;assets" ^

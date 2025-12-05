@@ -29,8 +29,9 @@ pyinstaller --noconsole --windowed --name "CodeSync" --clean \
     --hidden-import utils \
     --add-data "assets/lang.json:assets" \
     --add-data "VERSION:." \
-    src/main.py
     --icon "assets/icon.icns" \
+    src/main.py
+
 
 echo "------------------------------------------"
 if [ -d "dist/CodeSync.app" ]; then
