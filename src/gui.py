@@ -42,13 +42,15 @@ class CodeSyncApp:
         self.lang_var = tk.StringVar(value="en")
         self.theme_var = tk.StringVar(value="system")
 
-        # 配置加载顺序：本地配置 -> 初始设置 -> 构建UI -> 应用主题 -> 恢复项目
+        # 自动导出复选框变量
+        self.auto_export_var = tk.BooleanVar(value=False)
+
+        # 配置加载顺序
         self._load_local_config()
         self._detect_initial_settings()
 
         self.root.title(self.tr("app_title"))
         self._build_ui()
-        # 强制刷新确保 Windows 句柄存在，以便应用深色标题栏
         self.root.update()
         self._apply_theme()
 
@@ -59,24 +61,25 @@ class CodeSyncApp:
             self.root.after(100, lambda: self.switch_project(None))
 
     def _load_translations(self):
-        # 使用 config 模块获取资源路径
         lang_path = config.get_resource_path(config.LANG_FILE_REL)
         try:
             with open(lang_path, 'r', encoding='utf-8') as f:
                 self.translations = json.load(f)
+
+            # 动态注入新功能的翻译
+            en = self.translations.setdefault("en", {})
+            zh = self.translations.setdefault("zh", {})
+
         except Exception as e:
-            # 如果加载失败，提供最基础的英文回退，防止崩溃
             messagebox.showerror("Error", f"Cannot load languages from:\n{lang_path}\nError: {e}")
             self.translations = {"en": {}, "zh": {}}
 
     def tr(self, key):
-        """翻译帮助函数"""
         lang = self.lang_var.get()
         dct = self.translations.get(lang, self.translations.get("en", {}))
         return dct.get(key, key)
 
     def _detect_initial_settings(self):
-        # 语言检测
         if "language" in self.all_configs:
             self.lang_var.set(self.all_configs["language"])
         else:
@@ -89,15 +92,16 @@ class CodeSyncApp:
             except:
                 self.lang_var.set("en")
 
-        # 主题检测
         if "theme" in self.all_configs:
             self.theme_var.set(self.all_configs["theme"])
         else:
             self.theme_var.set("system")
 
+        if "auto_export" in self.all_configs:
+            self.auto_export_var.set(self.all_configs["auto_export"])
+
         self._save_local_config()
 
-    # === 配置与重置 ===
     def _load_local_config(self):
         if os.path.exists(config.CONFIG_FILE):
             try:
@@ -109,6 +113,7 @@ class CodeSyncApp:
 
     def _save_local_config(self):
         self.all_configs["projects"] = self.project_list
+        self.all_configs["auto_export"] = self.auto_export_var.get()
         try:
             with open(config.CONFIG_FILE, 'w') as f:
                 json.dump(self.all_configs, f)
@@ -116,7 +121,6 @@ class CodeSyncApp:
             pass
 
     def reset_app_config(self):
-        """重置所有设置"""
         if messagebox.askyesno(self.tr("status_error"), self.tr("msg_confirm_reset")):
             try:
                 if os.path.exists(config.CONFIG_FILE):
@@ -125,7 +129,6 @@ class CodeSyncApp:
             except Exception as e:
                 messagebox.showerror("Error", str(e))
 
-    # === 外观逻辑 ===
     def change_language(self):
         self.all_configs["language"] = self.lang_var.get()
         self._save_local_config()
@@ -146,7 +149,6 @@ class CodeSyncApp:
         if mode == "dark":
             is_dark = True
         elif mode == "system":
-            # 简易系统主题检测 (仅 Windows)
             if os.name == 'nt':
                 try:
                     import winreg
@@ -157,10 +159,8 @@ class CodeSyncApp:
                 except:
                     pass
 
-        # 调用 utils 里的跨平台安全函数
         utils.apply_windows_dark_mode(self.root, is_dark)
 
-        # 设置颜色
         if is_dark:
             bg, fg, field, sel = "#2d2d2d", "#ffffff", "#3d3d3d", "#0078d7"
             self.root.configure(bg=bg)
@@ -181,7 +181,6 @@ class CodeSyncApp:
             style.map("TCombobox", fieldbackground=[('readonly', 'white')], selectbackground=[('readonly', '#0078d7')],
                       selectforeground=[('readonly', 'white')])
 
-    # === UI 构建 ===
     def _rebuild_ui(self):
         curr_proj = self.name_var.get()
         for widget in self.root.winfo_children():
@@ -202,7 +201,6 @@ class CodeSyncApp:
         menubar = tk.Menu(self.root)
         self.root.config(menu=menubar)
 
-        # Project Menu
         proj_menu = tk.Menu(menubar, tearoff=0)
         menubar.add_cascade(label=self.tr("menu_project"), menu=proj_menu)
         proj_menu.add_command(label=self.tr("cmd_add_save"), command=self.save_local_project_info)
@@ -213,7 +211,6 @@ class CodeSyncApp:
         proj_menu.add_command(label=self.tr("cmd_reset_config"), command=self.reset_app_config)
         proj_menu.add_command(label=self.tr("cmd_exit"), command=self.root.quit)
 
-        # Edit Menu
         edit_menu = tk.Menu(menubar, tearoff=0)
         menubar.add_cascade(label=self.tr("menu_edit"), menu=edit_menu)
         edit_menu.add_command(label=self.tr("cmd_sel_all"), command=lambda: self.set_all_state(1))
@@ -222,7 +219,6 @@ class CodeSyncApp:
         edit_menu.add_command(label=self.tr("cmd_check_high"), command=lambda: self.batch_set_state(1))
         edit_menu.add_command(label=self.tr("cmd_uncheck_high"), command=lambda: self.batch_set_state(0))
 
-        # View Menu
         view_menu = tk.Menu(menubar, tearoff=0)
         menubar.add_cascade(label=self.tr("menu_view"), menu=view_menu)
 
@@ -240,7 +236,6 @@ class CodeSyncApp:
         lang_menu.add_radiobutton(label="English", variable=self.lang_var, value="en", command=self.change_language)
         lang_menu.add_radiobutton(label="中文", variable=self.lang_var, value="zh", command=self.change_language)
 
-        # Info Frame
         info_frame = ttk.LabelFrame(self.root, text=self.tr("lbl_curr_proj"))
         info_frame.pack(fill="x", padx=10, pady=5)
 
@@ -264,7 +259,6 @@ class CodeSyncApp:
         ttk.Entry(r2, textvariable=self.path_var).pack(side="left", fill="x", expand=True, padx=5)
         ttk.Button(r2, text=self.tr("btn_browse"), command=self.select_folder).pack(side="left")
 
-        # Toolbar
         tool_frame = ttk.Frame(self.root)
         tool_frame.pack(fill="x", padx=10, pady=2)
         ttk.Button(tool_frame, text=self.tr("btn_pull"), command=self.pull_cloud_config).pack(side="left")
@@ -277,15 +271,12 @@ class CodeSyncApp:
         sort_cb.pack(side="right", padx=2)
         sort_cb.bind("<<ComboboxSelected>>", self.on_sort_change)
 
-        # Treeview
         tree_frame = ttk.Frame(self.root)
         tree_frame.pack(fill="both", expand=True, padx=10, pady=5)
 
         self.tree = ttk.Treeview(tree_frame, columns=("status"), selectmode="extended")
-
         self.tree.column("#0", width=600, minwidth=150, anchor="w", stretch=True)
         self.tree.heading("#0", text=self.tr("col_file"))
-
         self.tree.column("status", width=80, minwidth=60, anchor="center", stretch=False)
         self.tree.heading("status", text=self.tr("col_check"))
 
@@ -295,14 +286,16 @@ class CodeSyncApp:
         self.tree.configure(yscrollcommand=sb.set)
         self.tree.bind("<Button-1>", self.on_click)
 
-        # Bottom
         b_frame = ttk.Frame(self.root)
         b_frame.pack(fill="x", padx=10, pady=10)
         self.status_lbl = ttk.Label(b_frame, text=self.tr("status_ready"))
         self.status_lbl.pack(side="left")
-        ttk.Button(b_frame, text=self.tr("btn_sync"), command=self.sync_logic).pack(side="right")
 
-    # === Tree & Logic ===
+        ttk.Button(b_frame, text=self.tr("btn_sync"), command=self.sync_logic).pack(side="right", padx=2)
+        ttk.Checkbutton(b_frame, text=self.tr("chk_also_local"), variable=self.auto_export_var).pack(side="right",
+                                                                                                     padx=5)
+        ttk.Button(b_frame, text=self.tr("btn_export_txt"), command=self.export_local_only).pack(side="right", padx=5)
+
     def refresh_tree_structure(self, keep_state=False):
         current_selections = set()
         if keep_state:
@@ -319,13 +312,11 @@ class CodeSyncApp:
         root = self.path_var.get()
         if not root or not os.path.exists(root): return
 
-        # 使用 logic 模块加载 ignore
         self.gitignore_patterns = logic.load_gitignore(root, config.DEFAULT_IGNORE)
         self._populate(root, "", current_selections)
         self._recalc_folder_states()
 
     def _populate(self, current_path, parent_uid, selections):
-        # 使用 logic 模块排序
         items = logic.get_sorted_items(current_path, self.sort_mode.get(), self.sort_desc.get())
         root_abs = self.path_var.get()
 
@@ -333,7 +324,6 @@ class CodeSyncApp:
             full = os.path.join(current_path, item)
             rel = os.path.relpath(full, root_abs)
 
-            # 使用 logic 模块检查 ignore
             if logic.is_ignored(item, rel, self.gitignore_patterns):
                 continue
 
@@ -368,14 +358,19 @@ class CodeSyncApp:
             self.set_item_state(item_id, new_state)
             return "break"
 
+    # === 关键修复：死循环解决 ===
     def set_item_state(self, uid, state):
         d = self.node_data[uid]
         d['state'] = state
         self.tree.item(uid, values=(self._get_status_icon(state, d['type']),))
         if d['type'] == 'dir':
             for c in self.tree.get_children(uid): self._set_down(c, state)
+
+        # 修复死循环：确保 p 在循环内更新
         p = self.tree.parent(uid)
-        while p: self._update_parent(p); p = self.tree.parent(p)
+        while p:
+            self._update_parent(p)
+            p = self.tree.parent(p)
 
     def _set_down(self, uid, state):
         d = self.node_data[uid]
@@ -406,8 +401,11 @@ class CodeSyncApp:
     def _recalc_folder_states(self):
         for uid, d in self.node_data.items():
             if d['type'] == 'file' and d['state'] == 1:
+                # 修复死循环：确保 p 在循环内更新
                 p = self.tree.parent(uid)
-                while p: self._update_parent(p); p = self.tree.parent(p)
+                while p:
+                    self._update_parent(p)
+                    p = self.tree.parent(p)
 
     def batch_set_state(self, state):
         for uid in self.tree.selection():
@@ -426,7 +424,8 @@ class CodeSyncApp:
 
     def select_folder(self):
         p = filedialog.askdirectory()
-        if p: self.path_var.set(p); self.refresh_tree_structure()
+        if p: self.path_var.set(p);
+        self.refresh_tree_structure()
 
     def _refresh_project_combo(self):
         self.project_combo['values'] = list(self.project_list.keys())
@@ -466,10 +465,21 @@ class CodeSyncApp:
             self._save_local_config()
 
     def copy_url(self):
-        self.root.clipboard_clear(); self.root.clipboard_append(f"{self.url_var.get()}/{self.name_var.get()}")
+        self.root.clipboard_clear();
+        self.root.clipboard_append(f"{self.url_var.get()}/{self.name_var.get()}")
 
     def open_url(self):
         webbrowser.open(f"{self.url_var.get()}/{self.name_var.get()}")
+
+    def clear_cloud_data(self):
+        u, n = self.url_var.get().strip().rstrip("/"), self.name_var.get().strip()
+        if not u or not n: return
+        if messagebox.askyesno(self.tr("status_error"), self.tr("msg_confirm_clear").format(n)):
+            try:
+                requests.delete(f"{u}/project/{n}")
+            except:
+                pass
+            messagebox.showinfo(self.tr("status_done"), self.tr("msg_done"))
 
     def pull_cloud_config(self):
         u, n = self.url_var.get().strip().rstrip("/"), self.name_var.get().strip()
@@ -493,50 +503,97 @@ class CodeSyncApp:
         except:
             pass
 
+    def _generate_payload(self):
+        url, name, root = self.url_var.get().strip().rstrip("/"), self.name_var.get().strip(), self.path_var.get()
+        if not name or not root: return None, None
+
+        out = [f"# Project: {name}\n## Structure\n"]
+        sel_list = []
+
+        def walk(parent_uid, pre=""):
+            children = self.tree.get_children(parent_uid)
+            vis_children = [c for c in children if self.node_data[c]['type'] != 'binary']
+            cnt = len(vis_children)
+            for i, uid in enumerate(vis_children):
+                d = self.node_data[uid]
+                is_last = (i == cnt - 1)
+                marker = "└─" if is_last else "├─"
+                mark = "[x]" if d['state'] == 1 else "[ ]"
+                if d['state'] == 2: mark = "[-]"
+                out.append(f"{pre}{marker} {mark} {d['name']}")
+                walk(uid, pre + ("   " if is_last else "│  "))
+
+        walk("")
+
+        out.append("\n" + "=" * 40 + "\n## Contents\n")
+
+        def walk_c(items):
+            for uid in items:
+                d = self.node_data[uid]
+                if d['type'] == 'file' and d['state'] == 1:
+                    rel = os.path.relpath(d['path'], root).replace("\\", "/")
+                    sel_list.append(rel)
+                    out.append(f"\n--- START: {rel} ---\n")
+                    try:
+                        with open(d['path'], 'r', encoding='utf-8', errors='ignore') as f:
+                            out.append(f.read())
+                    except:
+                        out.append("[Err]")
+                    out.append(f"\n--- END: {rel} ---\n")
+                if d['type'] == 'dir': walk_c(self.tree.get_children(uid))
+
+        walk_c(self.tree.get_children(""))
+
+        return "\n".join(out), sel_list
+
+    def export_local_only(self):
+        payload, _ = self._generate_payload()
+        if not payload:
+            messagebox.showwarning("Warning", "Please select a project first.")
+            return
+
+        root = self.path_var.get()
+        name = self.name_var.get()
+        default_name = f"{name}_code_context.txt"
+
+        target_path = filedialog.asksaveasfilename(
+            initialdir=root,
+            initialfile=default_name,
+            defaultextension=".txt",
+            filetypes=[("Text Files", "*.txt"), ("All Files", "*.*")]
+        )
+
+        if target_path:
+            try:
+                with open(target_path, 'w', encoding='utf-8') as f:
+                    f.write(payload)
+                messagebox.showinfo("Success", self.tr("msg_export_ok").format(target_path))
+            except Exception as e:
+                messagebox.showerror("Error", str(e))
+
     def sync_logic(self):
         self.save_local_project_info()
-        url, name, root = self.url_var.get().strip().rstrip("/"), self.name_var.get().strip(), self.path_var.get()
-        if not url or not name: return
+        payload, sel_list = self._generate_payload()
+        if not payload: return
+
+        if self.auto_export_var.get():
+            root = self.path_var.get()
+            name = self.name_var.get()
+            default_name = f"{name}_code_context.txt"
+            target_path = os.path.join(root, default_name)
+            try:
+                with open(target_path, 'w', encoding='utf-8') as f:
+                    f.write(payload)
+            except:
+                pass
+
+        url, name = self.url_var.get().strip().rstrip("/"), self.name_var.get().strip()
         self.status_lbl.config(text=self.tr("status_packing"), foreground="blue");
         self.root.update()
+
         try:
-            out = [f"# Project: {name}\n## Structure\n"]
-            sel_list = []
-
-            def walk(parent_uid, pre=""):
-                children = self.tree.get_children(parent_uid)
-                vis_children = [c for c in children if self.node_data[c]['type'] != 'binary']
-                cnt = len(vis_children)
-                for i, uid in enumerate(vis_children):
-                    d = self.node_data[uid]
-                    is_last = (i == cnt - 1)
-                    marker = "└─" if is_last else "├─"
-                    mark = "[x]" if d['state'] == 1 else "[ ]"
-                    if d['state'] == 2: mark = "[-]"
-                    out.append(f"{pre}{marker} {mark} {d['name']}")
-                    walk(uid, pre + ("   " if is_last else "│  "))
-
-            walk("")
-            out.append("\n" + "=" * 40 + "\n## Contents\n")
-
-            def walk_c(items):
-                for uid in items:
-                    d = self.node_data[uid]
-                    if d['type'] == 'file' and d['state'] == 1:
-                        rel = os.path.relpath(d['path'], root).replace("\\", "/")
-                        sel_list.append(rel)
-                        out.append(f"\n--- START: {rel} ---\n")
-                        try:
-                            with open(d['path'], 'r', encoding='utf-8', errors='ignore') as f:
-                                out.append(f.read())
-                        except:
-                            out.append("[Err]")
-                        out.append(f"\n--- END: {rel} ---\n")
-                    if d['type'] == 'dir': walk_c(self.tree.get_children(uid))
-
-            walk_c(self.tree.get_children(""))
-            payload = "\n".join(out)
             requests.post(f"{url}/config/{name}", json=sel_list)
+
             lh = hashlib.md5(payload.encode('utf-8')).hexdigest()
             need = True
             try:
@@ -544,6 +601,7 @@ class CodeSyncApp:
                 if r.status_code == 200 and r.json().get("hash") == lh: need = False
             except:
                 pass
+
             if need:
                 self.status_lbl.config(text=self.tr("status_uploading"), foreground="orange");
                 self.root.update()
@@ -556,12 +614,8 @@ class CodeSyncApp:
             self.status_lbl.config(text=self.tr("status_error"), foreground="red")
             messagebox.showerror(self.tr("status_error"), str(e))
 
-    def clear_cloud_data(self):
-        u, n = self.url_var.get().strip().rstrip("/"), self.name_var.get().strip()
-        if not u or not n: return
-        if messagebox.askyesno(self.tr("status_error"), self.tr("msg_confirm_clear").format(n)):
-            try:
-                requests.delete(f"{u}/project/{n}")
-            except:
-                pass
-            messagebox.showinfo(self.tr("status_done"), self.tr("msg_done"))
+
+if __name__ == "__main__":
+    root = tk.Tk()
+    app = CodeSyncApp(root)
+    root.mainloop()

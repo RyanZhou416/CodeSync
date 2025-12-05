@@ -40,10 +40,13 @@
     "msg_confirm_clear": "Permanently delete '{}' from cloud?",
     "msg_confirm_reset": "This will delete all local settings (projects, theme, lang). App will exit. Continue?",
     "msg_saved": "Project saved.",
-    "msg_done": "Operation successful."
+    "msg_done": "Operation successful.",
+    "btn_export_txt":"Export TXT",
+    "chk_also_local": "Also save to local",
+    "msg_export_ok": "Context exported to:\n{}"
   },
   "zh": {
-    "app_title": "代码同步 (CodeSync)",
+    "app_title": "CodeSync代码同步",
     "menu_project": "项目",
     "menu_edit": "编辑",
     "menu_view": "外观 (View)",
@@ -83,6 +86,9 @@
     "msg_confirm_clear": "确定永久清空云端项目 '{}' 的数据吗？",
     "msg_confirm_reset": "这将删除所有本地设置（项目记录、主题、语言等）并关闭软件。确定吗？",
     "msg_saved": "项目已保存。",
-    "msg_done": "操作成功。"
+    "msg_done": "操作成功。",
+    "btn_export_txt":"导出到本地 TXT",
+    "chk_also_local": "同时导出到本地",
+    "msg_export_ok": "已成功导出至：\\n{}"
   }
 }
