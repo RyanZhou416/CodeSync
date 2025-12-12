@@ -3,7 +3,6 @@
 ; =================================================================
 ; 1. 预处理器：动态读取版本号和架构
 ; =================================================================
-
 ; --- 读取根目录的 VERSION 文件 ---
 #define FileHandle
 #define FileLine
@@ -20,7 +19,6 @@
 #endif
 
 ; --- 接收命令行参数 (架构) ---
-; GitHub Actions 会通过 /DMyAppArch="x64" 传入，本地默认为 x64
 #ifndef MyAppArch
   #define MyAppArch "x64"
 #endif
@@ -28,6 +26,9 @@
 #define MyAppName "代码同步 (CodeSync)"
 #define MyAppPublisher "Ryan"
 #define MyAppExeName "CodeSync.exe"
+; === 新增：定义图标文件路径 ===
+#define MyAppIcon "..\assets\icon.ico"
+
 
 ; =================================================================
 ; 2. 安装程序核心设置
@@ -49,19 +50,19 @@ DefaultGroupName=CodeSync
 DefaultDirName={autopf}\CodeSync
 
 ; --- 输出设置 ---
-; 输出文件名格式：CodeSync_Setup_v1.0.8_x64
 OutputBaseFilename=CodeSync_Setup_v{#MyAppVersion}_{#MyAppArch}
 OutputDir=..\Output
 
 Compression=lzma
 SolidCompression=yes
-SetupIconFile=..\assets\icon.ico
+; 确保安装程序EXE本身的图标是正确的
+SetupIconFile={#MyAppIcon}
 
 ; --- 界面与逻辑 ---
-; 隐藏原本的“选择开始菜单文件夹”页面 (改用 Tasks 控制)
 DisableProgramGroupPage=yes
-; 允许选择安装目录
 DisableDirPage=no
+; 确保卸载程序有图标
+UninstallDisplayIcon={#MyAppIcon}
 ; 卸载相关
 CloseApplications=yes
 RestartApplications=no
@@ -70,21 +71,17 @@ RestartApplications=no
 ; 3. 多语言支持
 ; =================================================================
 [Languages]
-; 确保 ChineseSimplified.isl 就在 .iss 同级目录下
 Name: "chinesesimplified"; MessagesFile: "ChineseSimplified.isl"
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
 ; === 自定义翻译 (解决硬编码英文问题) ===
 [CustomMessages]
-; 覆盖默认的“附加图标”标题
 english.AdditionalIcons=Additional shortcuts
 chinesesimplified.AdditionalIcons=附加快捷方式
 
-; 覆盖默认的“创建桌面图标”描述
 english.CreateDesktopIcon=Create a desktop shortcut
 chinesesimplified.CreateDesktopIcon=创建桌面快捷方式
 
-; 新增“创建开始菜单图标”描述
 english.CreateStartMenuIcon=Create a Start Menu shortcut
 chinesesimplified.CreateStartMenuIcon=创建开始菜单快捷方式
 
@@ -104,20 +101,23 @@ Name: "startmenuicon"; Description: "{cm:CreateStartMenuIcon}"; GroupDescription
 [Files]
 ; 主程序
 Source: "..\dist\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
-; 语言包 & 版本文件 (放到安装目录下的 assets 文件夹，或者直接放根目录看你代码怎么写的)
-; 根据你之前的代码逻辑，lang.json 在 assets 子目录
+; 语言包 & 版本文件
 Source: "..\assets\lang.json"; DestDir: "{app}\assets"; Flags: ignoreversion
+; === 确保图标文件也被打包进去 (因为快捷方式要引用它) ===
+Source: "{#MyAppIcon}"; DestDir: "{app}\assets"; Flags: ignoreversion
+
 
 ; =================================================================
 ; 6. 快捷方式生成
 ; =================================================================
 [Icons]
-; 开始菜单图标 (仅当勾选 startmenuicon 时创建)
-Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: startmenuicon
-Name: "{group}\{cm:UninstallProgram,{#MyAppName}}"; Filename: "{uninstallexe}"; Tasks: startmenuicon
+; 开始菜单快捷方式 (主程序) - IconFilename 指向安装后的图标文件
+Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: startmenuicon; IconFilename: "{app}\assets\icon.ico"
+; 开始菜单快捷方式 (卸载程序)
+Name: "{group}\{cm:UninstallProgram,{#MyAppName}}"; Filename: "{uninstallexe}"; Tasks: startmenuicon; IconFilename: "{app}\assets\icon.ico"
 
-; 桌面图标 (仅当勾选 desktopicon 时创建)
-Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
+; 桌面图标
+Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon; IconFilename: "{app}\assets\icon.ico"
 
 ; =================================================================
 ; 7. 运行
