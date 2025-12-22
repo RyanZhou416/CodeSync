@@ -11,7 +11,7 @@ echo "Building CodeSync for Linux..."
 # 生成二进制文件
 # Linux 下我们也把资源打包进去，方便单文件分发
 pyinstaller --noconsole --onefile --name "CodeSync" \
-    --add-data "assets/lang.json:assets" \
+    --add-data "assets:assets" \
     src/main.py
 
 echo "Build complete. Check 'dist/CodeSync'"

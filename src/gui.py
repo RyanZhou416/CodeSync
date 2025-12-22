@@ -1,88 +1,62 @@
 import os
 import json
-import webbrowser
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 import requests
 import hashlib
 import datetime
+import sys
 
 import config
 import utils
 import logic
 
-# 统一勾选框样式 (Unicode)
-ICON_UNCHECKED = "☐"
-ICON_CHECKED = "☑"
-ICON_PARTIAL = "⊟"  # 保持部分选中状态图标，用于文件夹
-ICON_BIN = ""
 
+class MDICheckbutton(ttk.Frame):
+    """
+    基于图片的自定义勾选框 (仅支持 PNG)
+    """
 
-class SettingsDialog(tk.Toplevel):
-    """设置弹窗页面"""
+    def __init__(self, parent, images, text="", variable=None, command=None, *args, **kwargs):
+        super().__init__(parent, *args, **kwargs)
+        self.variable = variable
+        self.command = command
+        self.images = images  # {'on': image, 'off': image}
 
-    def __init__(self, parent, config_data, callback):
-        super().__init__(parent)
-        self.title("Settings")
-        self.geometry("400x350")
-        self.resizable(False, False)
-        self.transient(parent)
-        self.grab_set()
+        # 图标标签
+        self.lbl_icon = ttk.Label(self)
+        self.lbl_icon.pack(side="left")
 
-        self.config_data = config_data
-        self.callback = callback
+        # 文字标签
+        if text:
+            self.lbl_text = ttk.Label(self, text=text)
+            self.lbl_text.pack(side="left", padx=(5, 0))
+            self.lbl_text.bind("<Button-1>", self._toggle)
 
-        # 默认值
-        self.use_timestamp = tk.BooleanVar(value=config_data.get("use_timestamp", False))
-        self.keep_latest = tk.BooleanVar(value=config_data.get("keep_latest", False))
-        self.custom_name = tk.StringVar(value=config_data.get("custom_name", "code_context"))
+        self.lbl_icon.bind("<Button-1>", self._toggle)
 
-        self._build_ui()
-        utils.apply_windows_dark_mode(self, False)  # 简单处理，跟随主窗口稍显复杂
+        if self.variable:
+            self.variable.trace_add("write", self._update_icon)
+            self._update_icon()
 
-    def _build_ui(self):
-        p = ttk.Frame(self, padding=20)
-        p.pack(fill="both", expand=True)
+    def _toggle(self, event=None):
+        if self.variable:
+            self.variable.set(not self.variable.get())
+            if self.command:
+                self.command()
 
-        # 1. 文件命名设置
-        grp1 = ttk.LabelFrame(p, text="Output Filename Settings", padding=10)
-        grp1.pack(fill="x", pady=5)
-
-        ttk.Label(grp1, text="Base Filename (.txt):").pack(anchor="w")
-        ttk.Entry(grp1, textvariable=self.custom_name).pack(fill="x", pady=5)
-
-        ttk.Checkbutton(grp1, text="Append Timestamp (YYYY-MM-DD_...)",
-                        variable=self.use_timestamp).pack(anchor="w", pady=5)
-
-        # 2. 文件管理
-        grp2 = ttk.LabelFrame(p, text="File Management", padding=10)
-        grp2.pack(fill="x", pady=15)
-
-        ttk.Checkbutton(grp2, text="Keep Latest Only (Auto-delete old exports)",
-                        variable=self.keep_latest).pack(anchor="w")
-        ttk.Label(grp2, text="* Checks file header for safety.",
-                  font=("Arial", 8), foreground="gray").pack(anchor="w", padx=20)
-
-        # 按钮
-        btn_frame = ttk.Frame(p)
-        btn_frame.pack(fill="x", pady=10)
-        ttk.Button(btn_frame, text="Save", command=self.save).pack(side="right")
-        ttk.Button(btn_frame, text="Cancel", command=self.destroy).pack(side="right", padx=5)
-
-    def save(self):
-        new_conf = {
-            "use_timestamp": self.use_timestamp.get(),
-            "keep_latest": self.keep_latest.get(),
-            "custom_name": self.custom_name.get().strip() or "code_context"
-        }
-        self.callback(new_conf)
-        self.destroy()
+    def _update_icon(self, *args):
+        if self.variable:
+            state = self.variable.get()
+            img = self.images.get('on' if state else 'off')
+            if img:
+                self.lbl_icon.config(image=img)
 
 
 class CodeSyncApp:
     def __init__(self, root):
         self.root = root
-        self.root.geometry("950x850")
+        self.root.geometry("980x850")
 
         self.node_data = {}
         self.all_configs = {}
@@ -90,15 +64,12 @@ class CodeSyncApp:
         self.gitignore_patterns = []
         self.translations = {}
 
-        # 导出设置 (默认)
+        # 导出设置
         self.export_settings = {
             "use_timestamp": False,
             "keep_latest": False,
             "custom_name": "code_context"
         }
-
-        # 加载语言包
-        self._load_translations()
 
         # UI 变量
         self.name_var = tk.StringVar()
@@ -110,9 +81,13 @@ class CodeSyncApp:
         self.theme_var = tk.StringVar(value="system")
         self.auto_export_var = tk.BooleanVar(value=False)
 
-        # 配置加载
+        # 1. 加载配置
         self._load_local_config()
         self._detect_initial_settings()
+
+        # 2. 加载资源 (必须在创建 root 之后)
+        self._load_resources()
+        self._load_translations()
 
         self.root.title(self.tr("app_title"))
         self._build_ui()
@@ -123,14 +98,65 @@ class CodeSyncApp:
         last = self.all_configs.get("last_active", "")
         if last and last in self.project_list:
             self.project_combo.set(last)
-            self.root.after(100, lambda: self.switch_project(None))
+            self.root.after(200, lambda: self.switch_project(None))
+
+    def _load_resources(self):
+        """
+        加载 PNG 图标资源
+        """
+        self.icons = {}
+
+        # 需要的图标文件名 (必须是 PNG)
+        files = {
+            "checkbox_on": "checkbox_on.png",
+            "checkbox_off": "checkbox_off.png",
+            "checkbox_partial": "checkbox_partial.png",
+            "refresh": "refresh.png",
+            "settings": "settings.png"
+        }
+
+        # 搜索路径：优先找 assets/icons，其次找 assets
+        search_paths = [
+            config.get_resource_path(os.path.join("assets", "icons")),
+            config.get_resource_path("assets")
+        ]
+
+        # 默认透明图片 (防崩)
+        self.img_bin = tk.PhotoImage(width=1, height=1)
+
+        for key, filename in files.items():
+            loaded = False
+            for folder in search_paths:
+                path = os.path.join(folder, filename)
+                if os.path.exists(path):
+                    try:
+                        self.icons[key] = tk.PhotoImage(file=path)
+                        loaded = True
+                        break
+                    except Exception as e:
+                        print(f"Error loading {path}: {e}")
+
+            if not loaded:
+                print(f"[Warning] Icon not found: {filename}")
+                self.icons[key] = self.img_bin
+
+        self.check_imgs = {
+            'on': self.icons.get('checkbox_on', self.img_bin),
+            'off': self.icons.get('checkbox_off', self.img_bin)
+        }
+
+    def _get_status_image(self, state, ntype):
+        if ntype == 'binary': return self.img_bin
+        if state == 1: return self.icons.get('checkbox_on', self.img_bin)
+        if state == 2: return self.icons.get('checkbox_partial', self.img_bin)
+        return self.icons.get('checkbox_off', self.img_bin)
 
     def _load_translations(self):
         lang_path = config.get_resource_path(config.LANG_FILE_REL)
         try:
             with open(lang_path, 'r', encoding='utf-8') as f:
                 self.translations = json.load(f)
-        except Exception as e:
+        except Exception:
             self.translations = {"en": {}, "zh": {}}
 
     def tr(self, key):
@@ -139,7 +165,6 @@ class CodeSyncApp:
         return dct.get(key, key)
 
     def _detect_initial_settings(self):
-        # 语言
         if "language" in self.all_configs:
             self.lang_var.set(self.all_configs["language"])
         else:
@@ -152,11 +177,9 @@ class CodeSyncApp:
             except:
                 self.lang_var.set("en")
 
-        # 主题
         self.theme_var.set(self.all_configs.get("theme", "system"))
         self.auto_export_var.set(self.all_configs.get("auto_export", False))
 
-        # 导出设置
         if "export_settings" in self.all_configs:
             self.export_settings.update(self.all_configs["export_settings"])
 
@@ -173,6 +196,7 @@ class CodeSyncApp:
         self.all_configs["projects"] = self.project_list
         self.all_configs["auto_export"] = self.auto_export_var.get()
         self.all_configs["export_settings"] = self.export_settings
+        self.all_configs["language"] = self.lang_var.get()  # 保存语言
         try:
             with open(config.CONFIG_FILE, 'w') as f:
                 json.dump(self.all_configs, f)
@@ -180,7 +204,7 @@ class CodeSyncApp:
             pass
 
     def open_settings_dialog(self):
-        SettingsDialog(self.root, self.export_settings, self.update_export_settings)
+        SettingsDialog(self.root, self.export_settings, self.update_export_settings, self.check_imgs)
 
     def update_export_settings(self, new_settings):
         self.export_settings = new_settings
@@ -192,6 +216,12 @@ class CodeSyncApp:
         self._save_local_config()
         self._apply_theme()
 
+    def change_lang(self):
+        """切换语言并保存，重建 UI"""
+        self._save_local_config()
+        self.root.title(self.tr("app_title"))
+        self._build_ui()
+
     def _apply_theme(self):
         style = ttk.Style()
         style.theme_use('clam')
@@ -202,7 +232,6 @@ class CodeSyncApp:
         if mode == "dark":
             is_dark = True
         elif mode == "system":
-            # 使用新的跨平台检测
             is_dark = utils.is_system_dark_mode()
 
         utils.apply_windows_dark_mode(self.root, is_dark)
@@ -211,7 +240,7 @@ class CodeSyncApp:
             bg, fg, field, sel = "#2d2d2d", "#ffffff", "#3d3d3d", "#0078d7"
             self.root.configure(bg=bg)
             style.configure(".", background=bg, foreground=fg, fieldbackground=field)
-            style.configure("Treeview", background=field, foreground=fg, fieldbackground=field)
+            style.configure("Treeview", background=field, foreground=fg, fieldbackground=field, borderwidth=0)
             style.map("Treeview", background=[('selected', sel)], foreground=[('selected', 'white')])
             style.configure("TCombobox", fieldbackground=field, background=bg, foreground=fg, arrowcolor="white")
             style.map("TCombobox", fieldbackground=[('readonly', field)], selectbackground=[('readonly', sel)],
@@ -220,7 +249,7 @@ class CodeSyncApp:
             bg, fg, field = "#f0f0f0", "#000000", "#ffffff"
             self.root.configure(bg=bg)
             style.configure(".", background=bg, foreground=fg, fieldbackground=field)
-            style.configure("Treeview", background="white", foreground="black", fieldbackground="white")
+            style.configure("Treeview", background="white", foreground="black", fieldbackground="white", borderwidth=0)
             style.map("Treeview", background=[('selected', '#0078d7')], foreground=[('selected', 'white')])
             style.configure("TCombobox", fieldbackground="white", background="white", foreground="black",
                             arrowcolor="black")
@@ -228,7 +257,6 @@ class CodeSyncApp:
                       selectforeground=[('readonly', 'white')])
 
     def _build_ui(self):
-        # 清理旧组件 (如果重建 UI)
         for widget in self.root.winfo_children():
             if not isinstance(widget, tk.Menu): widget.destroy()
 
@@ -247,11 +275,18 @@ class CodeSyncApp:
         edit_menu.add_command(label=self.tr("cmd_sel_all"), command=lambda: self.set_all_state(1))
         edit_menu.add_command(label=self.tr("cmd_desel_all"), command=lambda: self.set_all_state(0))
         edit_menu.add_separator()
-        edit_menu.add_command(label="Settings...", command=self.open_settings_dialog)  # 新增设置入口
+        edit_menu.add_command(label="⚙️ Settings...", command=self.open_settings_dialog)
 
         view_menu = tk.Menu(menubar, tearoff=0)
         menubar.add_cascade(label=self.tr("menu_view"), menu=view_menu)
 
+        # === 语言菜单 (已恢复) ===
+        lang_menu = tk.Menu(view_menu, tearoff=0)
+        view_menu.add_cascade(label=self.tr("submenu_lang"), menu=lang_menu)
+        lang_menu.add_radiobutton(label="English", variable=self.lang_var, value="en", command=self.change_lang)
+        lang_menu.add_radiobutton(label="中文", variable=self.lang_var, value="zh", command=self.change_lang)
+
+        # === 主题菜单 ===
         theme_menu = tk.Menu(view_menu, tearoff=0)
         view_menu.add_cascade(label=self.tr("submenu_theme"), menu=theme_menu)
         theme_menu.add_radiobutton(label=self.tr("theme_system"), variable=self.theme_var, value="system",
@@ -261,7 +296,6 @@ class CodeSyncApp:
         theme_menu.add_radiobutton(label=self.tr("theme_dark"), variable=self.theme_var, value="dark",
                                    command=self.change_theme)
 
-        # 信息栏
         info_frame = ttk.LabelFrame(self.root, text=self.tr("lbl_curr_proj"))
         info_frame.pack(fill="x", padx=10, pady=5)
 
@@ -283,12 +317,10 @@ class CodeSyncApp:
         ttk.Entry(r2, textvariable=self.path_var).pack(side="left", fill="x", expand=True, padx=5)
         ttk.Button(r2, text=self.tr("btn_browse"), command=self.select_folder).pack(side="left")
 
-        # 工具栏
         tool_frame = ttk.Frame(self.root)
         tool_frame.pack(fill="x", padx=10, pady=2)
         ttk.Button(tool_frame, text=self.tr("btn_pull"), command=self.pull_cloud_config).pack(side="left")
 
-        # 右侧工具
         ttk.Label(tool_frame, text=self.tr("lbl_sort")).pack(side="right", padx=5)
         self.sort_btn = ttk.Button(tool_frame, text="⬇", width=3, command=self.toggle_sort_dir)
         self.sort_btn.pack(side="right")
@@ -297,19 +329,19 @@ class CodeSyncApp:
         sort_cb.pack(side="right", padx=2)
         sort_cb.bind("<<ComboboxSelected>>", self.on_sort_change)
 
-        # === 新增：刷新按钮 ===
-        ttk.Button(tool_frame, text="🔄", width=3, command=lambda: self.refresh_tree_structure(keep_state=True)).pack(
-            side="right", padx=10)
+        # 刷新按钮 (使用图标)
+        ref_btn = ttk.Button(tool_frame, image=self.icons.get('refresh', self.img_bin), width=3,
+                             command=lambda: self.refresh_tree_structure(keep_state=True))
+        ref_btn.image = self.icons.get('refresh')
+        ref_btn.pack(side="right", padx=10)
 
-        # 树状图
         tree_frame = ttk.Frame(self.root)
         tree_frame.pack(fill="both", expand=True, padx=10, pady=5)
 
-        self.tree = ttk.Treeview(tree_frame, columns=("status"), selectmode="extended")
-        self.tree.column("#0", width=600, minwidth=150, anchor="w", stretch=True)
+        # 核心：使用图片显示状态，去除 col_check
+        self.tree = ttk.Treeview(tree_frame, columns=(), selectmode="extended")
+        self.tree.column("#0", width=800, minwidth=200, anchor="w", stretch=True)
         self.tree.heading("#0", text=self.tr("col_file"))
-        self.tree.column("status", width=80, minwidth=60, anchor="center", stretch=False)
-        self.tree.heading("status", text=self.tr("col_check"))
 
         self.tree.pack(side="left", fill="both", expand=True)
         sb = ttk.Scrollbar(tree_frame, orient="vertical", command=self.tree.yview)
@@ -317,29 +349,20 @@ class CodeSyncApp:
         self.tree.configure(yscrollcommand=sb.set)
         self.tree.bind("<Button-1>", self.on_click)
 
-        # 底部按钮
         b_frame = ttk.Frame(self.root)
         b_frame.pack(fill="x", padx=10, pady=10)
         self.status_lbl = ttk.Label(b_frame, text=self.tr("status_ready"))
         self.status_lbl.pack(side="left")
 
         ttk.Button(b_frame, text=self.tr("btn_sync"), command=self.sync_logic).pack(side="right", padx=2)
-        ttk.Checkbutton(b_frame, text=self.tr("chk_also_local"), variable=self.auto_export_var).pack(side="right",
-                                                                                                     padx=5)
+
+        # 使用自定义 Checkbox (传入图标)
+        MDICheckbutton(b_frame, images=self.check_imgs, text=self.tr("chk_also_local"),
+                       variable=self.auto_export_var).pack(side="right", padx=5)
+
         ttk.Button(b_frame, text=self.tr("btn_export_txt"), command=self.export_local_only).pack(side="right", padx=5)
 
     def refresh_tree_structure(self, keep_state=False):
-        """
-        刷新树状结构
-        keep_state=True:
-        - 记录当前选中的文件 (relpath)
-        - 重新扫描目录
-        - 恢复选中状态
-        - 逻辑结果：
-          1. 文件如果消失了 -> 自动不显示 (因为新扫描没有)
-          2. 新文件 -> 默认 state=0 (因为不在记录的 relpath 中)
-          3. 文件内容改变 -> 保持原状态 (因为 relpath 没变)
-        """
         current_selections = set()
         if keep_state:
             root_abs = self.path_var.get()
@@ -376,28 +399,23 @@ class CodeSyncApp:
 
             node_type = "dir" if is_dir else ("binary" if is_bin else "file")
             state = 0
-            # 恢复之前的状态
             if node_type == 'file' and rel in selections: state = 1
 
-            status_text = self._get_status_icon(state, node_type)
-            uid = self.tree.insert(parent_uid, "end", text=f" {item}", values=(status_text,), open=False)
+            img = self._get_status_image(state, node_type)
+            uid = self.tree.insert(parent_uid, "end", text=f" {item}", image=img, open=False)
             self.node_data[uid] = {"path": full, "type": node_type, "state": state, "name": item}
 
             if node_type == 'dir': self._populate(full, uid, selections)
 
-    def _get_status_icon(self, state, ntype):
-        if ntype == 'binary': return ICON_BIN
-        if state == 1: return ICON_CHECKED
-        if state == 2: return ICON_PARTIAL
-        return ICON_UNCHECKED
-
     def on_click(self, event):
-        col_id = self.tree.identify_column(event.x)
         item_id = self.tree.identify_row(event.y)
         if not item_id: return
         data = self.node_data.get(item_id)
         if not data or data["type"] == "binary": return
-        if col_id == "#1":
+
+        # 判断是否点击了图标区域
+        element = self.tree.identify_element(event.x, event.y)
+        if "image" in element:
             new_state = 0 if data["state"] == 1 else 1
             self.set_item_state(item_id, new_state)
             return "break"
@@ -405,10 +423,9 @@ class CodeSyncApp:
     def set_item_state(self, uid, state):
         d = self.node_data[uid]
         d['state'] = state
-        self.tree.item(uid, values=(self._get_status_icon(state, d['type']),))
+        self.tree.item(uid, image=self._get_status_image(state, d['type']))
         if d['type'] == 'dir':
             for c in self.tree.get_children(uid): self._set_down(c, state)
-
         p = self.tree.parent(uid)
         while p:
             self._update_parent(p)
@@ -418,7 +435,7 @@ class CodeSyncApp:
         d = self.node_data[uid]
         if d['type'] == 'binary': return
         d['state'] = state
-        self.tree.item(uid, values=(self._get_status_icon(state, d['type']),))
+        self.tree.item(uid, image=self._get_status_image(state, d['type']))
         if d['type'] == 'dir':
             for c in self.tree.get_children(uid): self._set_down(c, state)
 
@@ -438,7 +455,7 @@ class CodeSyncApp:
         d = self.node_data[uid]
         if d['state'] != ns:
             d['state'] = ns
-            self.tree.item(uid, values=(self._get_status_icon(ns, d['type']),))
+            self.tree.item(uid, image=self._get_status_image(ns, d['type']))
 
     def _recalc_folder_states(self):
         for uid, d in self.node_data.items():
@@ -465,20 +482,23 @@ class CodeSyncApp:
 
     def select_folder(self):
         p = filedialog.askdirectory()
-        if p: self.path_var.set(p); self.refresh_tree_structure()
+        if p:
+            p = os.path.normpath(p)
+            self.path_var.set(p);
+            self.refresh_tree_structure()
 
     def _refresh_project_combo(self):
         self.project_combo['values'] = list(self.project_list.keys())
 
     def save_local_project_info(self):
-        n, p = self.name_var.get().strip(), self.path_var.get()
+        n, p = self.name_var.get().strip(), self.path_var.get().strip()
         if n and p:
-            self.project_list[n] = {"url": self.url_var.get(), "path": p}
+            self.project_list[n] = {"url": self.url_var.get().strip(), "path": p}
             self.all_configs["last_active"] = n
             self._save_local_config();
             self._refresh_project_combo();
             self.project_combo.set(n)
-            self.status_lbl.config(text=self.tr("msg_saved"))
+            self.status_lbl.config(text=self.tr("msg_saved"), foreground="green")
 
     def delete_local_project(self):
         n = self.project_combo.get()
@@ -499,21 +519,17 @@ class CodeSyncApp:
             self.name_var.set(n);
             self.url_var.set(c.get("url", ""));
             self.path_var.set(c.get("path", ""))
-            self.refresh_tree_structure();
-            self.pull_cloud_config()
+            self.refresh_tree_structure()
+            self._pull_cloud_config_silent()
             self.all_configs["last_active"] = n;
             self._save_local_config()
-
-    def copy_url(self):
-        self.root.clipboard_clear();
-        self.root.clipboard_append(f"{self.url_var.get()}/{self.name_var.get()}")
 
     def clear_cloud_data(self):
         u, n = self.url_var.get().strip().rstrip("/"), self.name_var.get().strip()
         if not u or not n: return
         if messagebox.askyesno(self.tr("status_error"), self.tr("msg_confirm_clear").format(n)):
             try:
-                requests.delete(f"{u}/project/{n}")
+                requests.delete(f"{u}/project/{n}", timeout=5)
             except:
                 pass
             messagebox.showinfo(self.tr("status_done"), self.tr("msg_done"))
@@ -523,31 +539,40 @@ class CodeSyncApp:
         if not u or not n: return
         self.status_lbl.config(text=self.tr("status_pulling"), foreground="blue");
         self.root.update()
+        if self._do_pull_logic(u, n):
+            self.status_lbl.config(text=self.tr("status_restored"), foreground="green")
+        else:
+            self.status_lbl.config(text="Pull failed or no config.", foreground="red")
+
+    def _pull_cloud_config_silent(self):
+        u, n = self.url_var.get().strip().rstrip("/"), self.name_var.get().strip()
+        if not u or not n: return
+        self.root.after(50, lambda: self._do_pull_logic(u, n, timeout=2))
+
+    def _do_pull_logic(self, u, n, timeout=4):
         try:
-            r = requests.get(f"{u}/config/{n}", timeout=3)
+            r = requests.get(f"{u}/config/{n}", timeout=timeout)
             if r.status_code == 200:
                 s = set(r.json())
                 root = self.path_var.get()
                 for uid, d in self.node_data.items():
                     if d['type'] == 'file':
                         rel = os.path.relpath(d['path'], root).replace("\\", "/")
-                        d['state'] = 1 if (rel in s or rel.replace("/", "\\") in s) else 0
-                        self.tree.item(uid, values=(self._get_status_icon(d['state'], 'file'),))
+                        new_st = 1 if (rel in s or rel.replace("/", "\\") in s) else 0
+                        if d['state'] != new_st:
+                            d['state'] = new_st
+                            self.tree.item(uid, image=self._get_status_image(new_st, 'file'))
                 self._recalc_folder_states()
-                self.status_lbl.config(text=self.tr("status_restored"), foreground="green")
-            else:
-                self.status_lbl.config(text="No Cloud Config", foreground="orange")
+                return True
         except:
             pass
+        return False
 
     def _generate_payload(self):
-        url, name, root = self.url_var.get().strip().rstrip("/"), self.name_var.get().strip(), self.path_var.get()
+        name, root = self.name_var.get().strip(), self.path_var.get().strip()
         if not name or not root: return None, None
-
-        # === 修改：注入元数据头 ===
         header = logic.generate_metadata_header(name, root)
         out = [header]
-
         out.append(f"# Project Structure\n## Structure\n")
         sel_list = []
 
@@ -565,7 +590,6 @@ class CodeSyncApp:
                 walk(uid, pre + ("   " if is_last else "│  "))
 
         walk("")
-
         out.append("\n" + "=" * 40 + "\n## Contents\n")
 
         def walk_c(items):
@@ -579,19 +603,16 @@ class CodeSyncApp:
                         with open(d['path'], 'r', encoding='utf-8', errors='ignore') as f:
                             out.append(f.read())
                     except:
-                        out.append("[Err]")
+                        out.append("[Error reading file]")
                     out.append(f"\n--- END: {rel} ---\n")
                 if d['type'] == 'dir': walk_c(self.tree.get_children(uid))
 
         walk_c(self.tree.get_children(""))
-
         return "\n".join(out), sel_list
 
     def _get_export_filename(self):
-        """根据设置生成输出文件名"""
         base = self.export_settings.get("custom_name", "code_context")
-        if not base.endswith(".txt"): base += ".txt"
-
+        if not base.lower().endswith(".txt"): base += ".txt"
         if self.export_settings.get("use_timestamp", False):
             ts = datetime.datetime.now().strftime(config.DATE_FMT_FILE)
             name_part, ext_part = os.path.splitext(base)
@@ -601,31 +622,23 @@ class CodeSyncApp:
     def export_local_only(self):
         payload, _ = self._generate_payload()
         if not payload:
-            messagebox.showwarning("Warning", "Please select a project first.")
+            messagebox.showwarning("Warning", "Project or path not set.")
             return
-
         root = self.path_var.get()
         filename = self._get_export_filename()
         target_path = os.path.join(root, filename)
-
-        # 如果没有开启时间戳，或者是自定义名称，询问保存路径（提供默认值）
         if not self.export_settings.get("use_timestamp", False):
             target_path = filedialog.asksaveasfilename(
-                initialdir=root,
-                initialfile=filename,
-                defaultextension=".txt",
+                initialdir=root, initialfile=filename, defaultextension=".txt",
                 filetypes=[("Text Files", "*.txt"), ("All Files", "*.*")]
             )
-
         if target_path:
             try:
                 with open(target_path, 'w', encoding='utf-8') as f:
                     f.write(payload)
-
-                # === 新增：清理旧文件逻辑 ===
                 if self.export_settings.get("keep_latest", False):
                     logic.clean_old_exports(root, target_path)
-
+                self.status_lbl.config(text="Export OK.", foreground="green")
                 messagebox.showinfo("Success", self.tr("msg_export_ok").format(target_path))
             except Exception as e:
                 messagebox.showerror("Error", str(e))
@@ -634,8 +647,6 @@ class CodeSyncApp:
         self.save_local_project_info()
         payload, sel_list = self._generate_payload()
         if not payload: return
-
-        # 本地自动备份逻辑
         if self.auto_export_var.get():
             root = self.path_var.get()
             filename = self._get_export_filename()
@@ -643,19 +654,16 @@ class CodeSyncApp:
             try:
                 with open(target_path, 'w', encoding='utf-8') as f:
                     f.write(payload)
-                # 清理旧文件
                 if self.export_settings.get("keep_latest", False):
                     logic.clean_old_exports(root, target_path)
             except:
                 pass
-
         url, name = self.url_var.get().strip().rstrip("/"), self.name_var.get().strip()
+        if not url or not name: return
         self.status_lbl.config(text=self.tr("status_packing"), foreground="blue");
         self.root.update()
-
         try:
-            requests.post(f"{url}/config/{name}", json=sel_list)
-
+            requests.post(f"{url}/config/{name}", json=sel_list, timeout=5)
             lh = hashlib.md5(payload.encode('utf-8')).hexdigest()
             need = True
             try:
@@ -663,15 +671,70 @@ class CodeSyncApp:
                 if r.status_code == 200 and r.json().get("hash") == lh: need = False
             except:
                 pass
-
             if need:
                 self.status_lbl.config(text=self.tr("status_uploading"), foreground="orange");
                 self.root.update()
                 requests.post(f"{url}/upload/{name}", data=payload.encode('utf-8'),
-                              headers={'Content-Type': 'text/plain; charset=utf-8'})
-                self.status_lbl.config(text=self.tr("status_done"), foreground="green")
-            else:
-                self.status_lbl.config(text=self.tr("status_done"), foreground="green")
+                              headers={'Content-Type': 'text/plain; charset=utf-8'}, timeout=30)
+            self.status_lbl.config(text=self.tr("status_done"), foreground="green")
         except Exception as e:
             self.status_lbl.config(text=self.tr("status_error"), foreground="red")
             messagebox.showerror(self.tr("status_error"), str(e))
+
+
+class SettingsDialog(tk.Toplevel):
+    def __init__(self, parent, config_data, callback, check_imgs):
+        super().__init__(parent)
+        self.title("Settings")
+        self.geometry("430x380")
+        self.resizable(False, False)
+        self.transient(parent)
+        self.grab_set()
+
+        self.config_data = config_data
+        self.callback = callback
+        self.check_imgs = check_imgs
+
+        self.use_timestamp = tk.BooleanVar(value=config_data.get("use_timestamp", False))
+        self.keep_latest = tk.BooleanVar(value=config_data.get("keep_latest", False))
+        self.custom_name = tk.StringVar(value=config_data.get("custom_name", "code_context"))
+        self._build_ui()
+        style = ttk.Style()
+        if style.theme_use() == 'clam':
+            utils.apply_windows_dark_mode(self, utils.is_system_dark_mode())
+
+    def _build_ui(self):
+        p = ttk.Frame(self, padding=20)
+        p.pack(fill="both", expand=True)
+        grp1 = ttk.LabelFrame(p, text="Output Filename Settings", padding=10)
+        grp1.pack(fill="x", pady=5)
+        ttk.Label(grp1, text="Base Filename (.txt):").pack(anchor="w")
+        ttk.Entry(grp1, textvariable=self.custom_name).pack(fill="x", pady=5)
+
+        MDICheckbutton(grp1, images=self.check_imgs, text="Append Timestamp (YYYY-MM-DD_...)",
+                       variable=self.use_timestamp).pack(anchor="w", pady=5)
+
+        grp2 = ttk.LabelFrame(p, text="File Management", padding=10)
+        grp2.pack(fill="x", pady=15)
+
+        MDICheckbutton(grp2, images=self.check_imgs, text="Keep Latest Only (Auto-delete old exports)",
+                       variable=self.keep_latest).pack(anchor="w")
+
+        ttk.Label(grp2, text="* Checks file header MAGIC_HEADER for safety.",
+                  font=("Arial", 8), foreground="gray").pack(anchor="w", padx=25)
+        btn_frame = ttk.Frame(p)
+        btn_frame.pack(fill="x", pady=10, side="bottom")
+        ttk.Button(btn_frame, text="Save", command=self.save).pack(side="right")
+        ttk.Button(btn_frame, text="Cancel", command=self.destroy).pack(side="right", padx=10)
+
+    def save(self):
+        safe_name = self.custom_name.get().strip()
+        for char in ['/', '\\', ':', '*', '?', '"', '<', '>', '|']:
+            safe_name = safe_name.replace(char, '')
+        new_conf = {
+            "use_timestamp": self.use_timestamp.get(),
+            "keep_latest": self.keep_latest.get(),
+            "custom_name": safe_name or "code_context"
+        }
+        self.callback(new_conf)
+        self.destroy()

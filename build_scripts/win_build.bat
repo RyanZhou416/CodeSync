@@ -46,7 +46,7 @@ echo [3/4] Building EXE...
 --add-data "assets;assets"
 "%PY_CMD%" -m PyInstaller --noconsole --onefile --name "CodeSync" --clean ^
     --paths "src" ^
-    --add-data "assets/lang.json;assets" ^
+    --add-data "assets;assets" ^
     --add-data "VERSION;." ^
     src/main.py
 

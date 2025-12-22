@@ -27,7 +27,7 @@ pyinstaller --noconsole --windowed --name "CodeSync" --clean \
     --hidden-import logic \
     --hidden-import config \
     --hidden-import utils \
-    --add-data "assets/lang.json:assets" \
+    --add-data "assets:assets" \
     --add-data "VERSION:." \
     --icon "assets/icon.icns" \
     src/main.py

@@ -80,7 +80,7 @@
     "status_uploading": "正在上传...",
     "status_done": "同步完成。",
     "status_error": "错误",
-    "col_file": "文件结构 (可拖拽调整宽度)",
+    "col_file": "文件结构",
     "col_check": "上传",
     "msg_confirm_del": "确定删除本地项目 '{}' 吗？",
     "msg_confirm_clear": "确定永久清空云端项目 '{}' 的数据吗？",
