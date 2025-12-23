@@ -102,11 +102,11 @@ class CodeSyncApp:
 
     def _load_resources(self):
         """
-        加载 PNG 图标资源
+        加载 PNG 图标资源 (保持原始大小，不缩放以保证清晰度)
         """
         self.icons = {}
 
-        # 需要的图标文件名 (必须是 PNG)
+        # 需要的图标文件名
         files = {
             "checkbox_on": "checkbox_on.png",
             "checkbox_off": "checkbox_off.png",
@@ -115,13 +115,11 @@ class CodeSyncApp:
             "settings": "settings.png"
         }
 
-        # 搜索路径：优先找 assets/icons，其次找 assets
         search_paths = [
             config.get_resource_path(os.path.join("assets", "icons")),
             config.get_resource_path("assets")
         ]
 
-        # 默认透明图片 (防崩)
         self.img_bin = tk.PhotoImage(width=1, height=1)
 
         for key, filename in files.items():
@@ -130,7 +128,8 @@ class CodeSyncApp:
                 path = os.path.join(folder, filename)
                 if os.path.exists(path):
                     try:
-                        self.icons[key] = tk.PhotoImage(file=path)
+                        img = tk.PhotoImage(file=path)
+                        self.icons[key] = img
                         loaded = True
                         break
                     except Exception as e:
@@ -196,7 +195,7 @@ class CodeSyncApp:
         self.all_configs["projects"] = self.project_list
         self.all_configs["auto_export"] = self.auto_export_var.get()
         self.all_configs["export_settings"] = self.export_settings
-        self.all_configs["language"] = self.lang_var.get()  # 保存语言
+        self.all_configs["language"] = self.lang_var.get()
         try:
             with open(config.CONFIG_FILE, 'w') as f:
                 json.dump(self.all_configs, f)
@@ -217,7 +216,6 @@ class CodeSyncApp:
         self._apply_theme()
 
     def change_lang(self):
-        """切换语言并保存，重建 UI"""
         self._save_local_config()
         self.root.title(self.tr("app_title"))
         self._build_ui()
@@ -236,11 +234,17 @@ class CodeSyncApp:
 
         utils.apply_windows_dark_mode(self.root, is_dark)
 
+        # === 核心修改：设置行高适应图标 ===
+        # 假设图标是 24px，我们给一点余量设为 28px
+        ROW_HEIGHT = 28
+
         if is_dark:
             bg, fg, field, sel = "#2d2d2d", "#ffffff", "#3d3d3d", "#0078d7"
             self.root.configure(bg=bg)
             style.configure(".", background=bg, foreground=fg, fieldbackground=field)
-            style.configure("Treeview", background=field, foreground=fg, fieldbackground=field, borderwidth=0)
+            # 设置 Treeview 行高
+            style.configure("Treeview", background=field, foreground=fg, fieldbackground=field, borderwidth=0,
+                            rowheight=ROW_HEIGHT)
             style.map("Treeview", background=[('selected', sel)], foreground=[('selected', 'white')])
             style.configure("TCombobox", fieldbackground=field, background=bg, foreground=fg, arrowcolor="white")
             style.map("TCombobox", fieldbackground=[('readonly', field)], selectbackground=[('readonly', sel)],
@@ -249,7 +253,8 @@ class CodeSyncApp:
             bg, fg, field = "#f0f0f0", "#000000", "#ffffff"
             self.root.configure(bg=bg)
             style.configure(".", background=bg, foreground=fg, fieldbackground=field)
-            style.configure("Treeview", background="white", foreground="black", fieldbackground="white", borderwidth=0)
+            style.configure("Treeview", background="white", foreground="black", fieldbackground="white", borderwidth=0,
+                            rowheight=ROW_HEIGHT)
             style.map("Treeview", background=[('selected', '#0078d7')], foreground=[('selected', 'white')])
             style.configure("TCombobox", fieldbackground="white", background="white", foreground="black",
                             arrowcolor="black")
@@ -280,13 +285,11 @@ class CodeSyncApp:
         view_menu = tk.Menu(menubar, tearoff=0)
         menubar.add_cascade(label=self.tr("menu_view"), menu=view_menu)
 
-        # === 语言菜单 (已恢复) ===
         lang_menu = tk.Menu(view_menu, tearoff=0)
         view_menu.add_cascade(label=self.tr("submenu_lang"), menu=lang_menu)
         lang_menu.add_radiobutton(label="English", variable=self.lang_var, value="en", command=self.change_lang)
         lang_menu.add_radiobutton(label="中文", variable=self.lang_var, value="zh", command=self.change_lang)
 
-        # === 主题菜单 ===
         theme_menu = tk.Menu(view_menu, tearoff=0)
         view_menu.add_cascade(label=self.tr("submenu_theme"), menu=theme_menu)
         theme_menu.add_radiobutton(label=self.tr("theme_system"), variable=self.theme_var, value="system",
@@ -329,7 +332,7 @@ class CodeSyncApp:
         sort_cb.pack(side="right", padx=2)
         sort_cb.bind("<<ComboboxSelected>>", self.on_sort_change)
 
-        # 刷新按钮 (使用图标)
+        # 刷新按钮
         ref_btn = ttk.Button(tool_frame, image=self.icons.get('refresh', self.img_bin), width=3,
                              command=lambda: self.refresh_tree_structure(keep_state=True))
         ref_btn.image = self.icons.get('refresh')
@@ -338,7 +341,6 @@ class CodeSyncApp:
         tree_frame = ttk.Frame(self.root)
         tree_frame.pack(fill="both", expand=True, padx=10, pady=5)
 
-        # 核心：使用图片显示状态，去除 col_check
         self.tree = ttk.Treeview(tree_frame, columns=(), selectmode="extended")
         self.tree.column("#0", width=800, minwidth=200, anchor="w", stretch=True)
         self.tree.heading("#0", text=self.tr("col_file"))
@@ -356,7 +358,6 @@ class CodeSyncApp:
 
         ttk.Button(b_frame, text=self.tr("btn_sync"), command=self.sync_logic).pack(side="right", padx=2)
 
-        # 使用自定义 Checkbox (传入图标)
         MDICheckbutton(b_frame, images=self.check_imgs, text=self.tr("chk_also_local"),
                        variable=self.auto_export_var).pack(side="right", padx=5)
 
@@ -412,8 +413,6 @@ class CodeSyncApp:
         if not item_id: return
         data = self.node_data.get(item_id)
         if not data or data["type"] == "binary": return
-
-        # 判断是否点击了图标区域
         element = self.tree.identify_element(event.x, event.y)
         if "image" in element:
             new_state = 0 if data["state"] == 1 else 1
