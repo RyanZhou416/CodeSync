@@ -82,37 +82,38 @@ def generate_metadata_header(project_name, root_path):
 def clean_old_exports(root_path, current_new_file):
     """
     只保留最新的输出文件。
-    安全策略：
-    1. 扫描根目录所有文件
-    2. 只检查包含 MAGIC_HEADER 的文件
-    3. 解析生成时间，删除比 current_new_file 旧的文件
     """
     try:
-        # === 修复 1: 规范化 root_path，防止 glob 在 Windows 上因为混合斜杠而出错 ===
         root_path = os.path.normpath(root_path)
-
-        # 获取所有文件
         files = glob.glob(os.path.join(root_path, "*"))
-
-        # === 修复 2: 统一路径格式以便比较 ===
-        # Windows 不区分大小写，必须用 normcase 统一转小写比较
         abs_current = os.path.normcase(os.path.abspath(current_new_file))
 
         for f_path in files:
             if os.path.isdir(f_path): continue
 
-            # === 修复 2 的应用 ===
             abs_f = os.path.normcase(os.path.abspath(f_path))
             if abs_f == abs_current:
                 continue
 
+            # === 核心修改开始 ===
+            should_delete = False
             try:
+                # 1. 先打开读取，判断是否符合删除条件
                 with open(f_path, 'r', encoding='utf-8', errors='ignore') as f:
                     first_line = f.readline().strip()
                     if first_line == config.MAGIC_HEADER:
-                        print(f"Removing old export: {f_path}")
-                        os.remove(f_path)
-            except Exception:
+                        should_delete = True
+                # 注意：with 块结束后，文件自动关闭，释放文件锁
+
+                # 2. 文件关闭后，如果标记为要删除，再执行删除
+                if should_delete:
+                    print(f"Removing old export: {f_path}")
+                    os.remove(f_path)
+
+            except Exception as e:
+                print(f"Error processing {f_path}: {e}")
                 continue
+            # === 核心修改结束 ===
+
     except Exception as e:
         print(f"Error cleaning old files: {e}")

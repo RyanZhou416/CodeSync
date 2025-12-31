@@ -169,8 +169,18 @@ class CodeSyncApp:
             self.icons_map["light"][key] = self._try_load_icon(search_paths, basename, "light")
             # 加载暗色图标
             self.icons_map["dark"][key] = self._try_load_icon(search_paths, basename, "dark")
+        mode = self.theme_var.get()
 
-        self.icons = self.icons_map[self.theme_var.get()]
+        # 如果是跟随系统，先判断系统当前是深色还是浅色
+        if mode == "system":
+            is_dark = utils.is_system_dark_mode()
+            actual_mode = "dark" if is_dark else "light"
+        else:
+            # 否则直接使用 "light" 或 "dark"
+            actual_mode = mode
+
+        # 使用解析后的 actual_mode 去取图标
+        self.icons = self.icons_map[actual_mode]
         self._update_check_imgs()
 
     def _try_load_icon(self, paths, basename, theme):
@@ -745,9 +755,21 @@ class CodeSyncApp:
             messagebox.showerror(self.tr("status_error"), str(e))
 
     def open_project_url(self):
-        url = self.url_var.get().strip()
-        if url:
-            webbrowser.open(url)
+        # 1. 去除 Base URL 末尾可能存在的多余斜杠
+        base_url = self.url_var.get().strip().rstrip("/")
+        # 2. 获取项目名
+        project_name = self.name_var.get().strip()
+
+        # 3. 只有当 Base URL 和 项目名 都有值时才拼接
+        if base_url and project_name:
+            full_url = f"{base_url}/{project_name}"
+            webbrowser.open(full_url)
+        elif base_url:
+            # 如果只有 URL 没有项目名，也可以选择只打开主页，或者报错
+            webbrowser.open(base_url)
+        else:
+            # 如果什么都没填，可以选择不做任何事或弹窗提示
+            pass
 
     def open_local_folder(self):
         path = self.path_var.get().strip()
