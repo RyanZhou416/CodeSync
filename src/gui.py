@@ -6,11 +6,12 @@ import requests
 import hashlib
 import datetime
 import sys
-
+import platform
+import webbrowser
+import subprocess
 import config
 import utils
 import logic
-
 
 class MDICheckbutton(ttk.Frame):
     """
@@ -100,19 +101,60 @@ class CodeSyncApp:
             self.project_combo.set(last)
             self.root.after(200, lambda: self.switch_project(None))
 
+    def reload_ui_with_state(self):
+        """重建 UI，同时保留当前选中的项目状态"""
+        # 1. 保存当前状态
+        current_proj = self.project_combo.get()
+
+        # 2. 应用当前的主题设置，切换对应的图标集
+        # 这一步决定了 self.icons 是 light 还是 dark
+        is_dark = False
+        mode = self.theme_var.get()
+        if mode == "dark":
+            is_dark = True
+        elif mode == "system":
+            is_dark = utils.is_system_dark_mode()
+
+        # 切换图标集
+        self.icons = self.icons_map["dark"] if is_dark else self.icons_map["light"]
+        self._update_check_imgs()
+
+        # 3. 重建 UI (此时会使用新的 self.icons)
+        self._build_ui()
+
+        # 4. 应用颜色主题 (背景色、字体颜色等)
+        self._apply_theme()  # 这里面其实也有判断 is_dark 的逻辑，可以保留
+
+        # 5. === 核心修复：恢复状态 ===
+        # 重新填充下拉列表
+        self._refresh_project_combo()
+
+        # 如果之前选中的项目还在列表中，恢复它
+        if current_proj and current_proj in self.project_list:
+            self.project_combo.set(current_proj)
+            # 恢复输入框的内容
+            data = self.project_list[current_proj]
+            self.name_var.set(current_proj)
+            self.url_var.set(data.get("url", ""))
+            self.path_var.set(data.get("path", ""))
+            # 刷新树形图 (但不强制从云端拉取，避免卡顿)
+            self.refresh_tree_structure()
+
     def _load_resources(self):
         """
         加载 PNG 图标资源 (保持原始大小，不缩放以保证清晰度)
         """
-        self.icons = {}
+        self.icons_map = {"light": {}, "dark": {}}
 
         # 需要的图标文件名
         files = {
-            "checkbox_on": "checkbox_on.png",
-            "checkbox_off": "checkbox_off.png",
-            "checkbox_partial": "checkbox_partial.png",
-            "refresh": "refresh.png",
-            "settings": "settings.png"
+            "checkbox_on": "checkbox_on",
+            "checkbox_off": "checkbox_off",
+            "checkbox_partial": "checkbox_partial",
+            "refresh": "refresh",
+            "settings": "settings",
+            "web": "web",
+            "folder": "folder"
         }
 
         search_paths = [
@@ -122,23 +164,34 @@ class CodeSyncApp:
 
         self.img_bin = tk.PhotoImage(width=1, height=1)
 
-        for key, filename in files.items():
-            loaded = False
-            for folder in search_paths:
-                path = os.path.join(folder, filename)
-                if os.path.exists(path):
+        for key, basename in files.items():
+            # 加载亮色图标
+            self.icons_map["light"][key] = self._try_load_icon(search_paths, basename, "light")
+            # 加载暗色图标
+            self.icons_map["dark"][key] = self._try_load_icon(search_paths, basename, "dark")
+
+        self.icons = self.icons_map[self.theme_var.get()]
+        self._update_check_imgs()
+
+    def _try_load_icon(self, paths, basename, theme):
+        """
+        尝试加载图标。
+        优先找: basename_theme.png (例如 refresh_dark.png)
+        找不到则回退找: basename.png (例如 refresh.png)
+        """
+        candidates = [f"{basename}_{theme}.png", f"{basename}.png"]
+
+        for filename in candidates:
+            for folder in paths:
+                p = os.path.join(folder, filename)
+                if os.path.exists(p):
                     try:
-                        img = tk.PhotoImage(file=path)
-                        self.icons[key] = img
-                        loaded = True
-                        break
-                    except Exception as e:
-                        print(f"Error loading {path}: {e}")
+                        return tk.PhotoImage(file=p)
+                    except Exception:
+                        pass
+        return self.img_bin
 
-            if not loaded:
-                print(f"[Warning] Icon not found: {filename}")
-                self.icons[key] = self.img_bin
-
+    def _update_check_imgs(self):
         self.check_imgs = {
             'on': self.icons.get('checkbox_on', self.img_bin),
             'off': self.icons.get('checkbox_off', self.img_bin)
@@ -203,7 +256,7 @@ class CodeSyncApp:
             pass
 
     def open_settings_dialog(self):
-        SettingsDialog(self.root, self.export_settings, self.update_export_settings, self.check_imgs)
+        SettingsDialog(self.root, self.export_settings, self.update_export_settings, self.check_imgs, self.tr)
 
     def update_export_settings(self, new_settings):
         self.export_settings = new_settings
@@ -213,30 +266,31 @@ class CodeSyncApp:
     def change_theme(self):
         self.all_configs["theme"] = self.theme_var.get()
         self._save_local_config()
-        self._apply_theme()
+        self.reload_ui_with_state()
 
     def change_lang(self):
         self._save_local_config()
         self.root.title(self.tr("app_title"))
-        self._build_ui()
+        self.reload_ui_with_state()
 
-    def _apply_theme(self):
+    def _apply_theme(self, is_dark=None):
         style = ttk.Style()
         style.theme_use('clam')
 
-        mode = self.theme_var.get()
-        is_dark = False
-
-        if mode == "dark":
-            is_dark = True
-        elif mode == "system":
-            is_dark = utils.is_system_dark_mode()
+        if is_dark is None:
+            mode = self.theme_var.get()
+            if mode == "dark":
+                is_dark = True
+            elif mode == "system":
+                is_dark = utils.is_system_dark_mode()
+            else:
+                is_dark = False
 
         utils.apply_windows_dark_mode(self.root, is_dark)
 
         # === 核心修改：设置行高适应图标 ===
         # 假设图标是 24px，我们给一点余量设为 28px
-        ROW_HEIGHT = 28
+        ROW_HEIGHT = 24
 
         if is_dark:
             bg, fg, field, sel = "#2d2d2d", "#ffffff", "#3d3d3d", "#0078d7"
@@ -280,7 +334,7 @@ class CodeSyncApp:
         edit_menu.add_command(label=self.tr("cmd_sel_all"), command=lambda: self.set_all_state(1))
         edit_menu.add_command(label=self.tr("cmd_desel_all"), command=lambda: self.set_all_state(0))
         edit_menu.add_separator()
-        edit_menu.add_command(label="⚙️ Settings...", command=self.open_settings_dialog)
+        edit_menu.add_command(label=self.tr("menu_settings"), command=self.open_settings_dialog)
 
         view_menu = tk.Menu(menubar, tearoff=0)
         menubar.add_cascade(label=self.tr("menu_view"), menu=view_menu)
@@ -332,11 +386,21 @@ class CodeSyncApp:
         sort_cb.pack(side="right", padx=2)
         sort_cb.bind("<<ComboboxSelected>>", self.on_sort_change)
 
+        btn_folder = ttk.Button(tool_frame, image=self.icons.get('folder', self.img_bin), width=3,
+                                command=self.open_local_folder)
+        btn_folder.pack(side="right", padx=2)
+
+        # 2. 打开网页
+        btn_web = ttk.Button(tool_frame, image=self.icons.get('web', self.img_bin), width=3,
+                             command=self.open_project_url)
+        btn_web.pack(side="right", padx=2)
+
+
         # 刷新按钮
         ref_btn = ttk.Button(tool_frame, image=self.icons.get('refresh', self.img_bin), width=3,
                              command=lambda: self.refresh_tree_structure(keep_state=True))
         ref_btn.image = self.icons.get('refresh')
-        ref_btn.pack(side="right", padx=10)
+        ref_btn.pack(side="right", padx=(10, 2))
 
         tree_frame = ttk.Frame(self.root)
         tree_frame.pack(fill="both", expand=True, padx=10, pady=5)
@@ -680,16 +744,39 @@ class CodeSyncApp:
             self.status_lbl.config(text=self.tr("status_error"), foreground="red")
             messagebox.showerror(self.tr("status_error"), str(e))
 
+    def open_project_url(self):
+        url = self.url_var.get().strip()
+        if url:
+            webbrowser.open(url)
+
+    def open_local_folder(self):
+        path = self.path_var.get().strip()
+        if not path or not os.path.exists(path):
+            return
+
+        # 跨平台打开文件夹
+        system = platform.system()
+        try:
+            if system == "Windows":
+                os.startfile(path)
+            elif system == "Darwin":  # macOS
+                subprocess.run(["open", path])
+            else:  # Linux
+                subprocess.run(["xdg-open", path])
+        except Exception as e:
+            print(f"Error opening folder: {e}")
+
 
 class SettingsDialog(tk.Toplevel):
-    def __init__(self, parent, config_data, callback, check_imgs):
+    def __init__(self, parent, config_data, callback, check_imgs, tr_func):
         super().__init__(parent)
         self.title("Settings")
         self.geometry("430x380")
         self.resizable(False, False)
         self.transient(parent)
         self.grab_set()
-
+        self.tr = tr_func
+        self.title(self.tr("settings_title"))
         self.config_data = config_data
         self.callback = callback
         self.check_imgs = check_imgs
@@ -705,26 +792,32 @@ class SettingsDialog(tk.Toplevel):
     def _build_ui(self):
         p = ttk.Frame(self, padding=20)
         p.pack(fill="both", expand=True)
-        grp1 = ttk.LabelFrame(p, text="Output Filename Settings", padding=10)
+
+        # 分组 1
+        grp1 = ttk.LabelFrame(p, text=self.tr("settings_grp_filename"), padding=10)
         grp1.pack(fill="x", pady=5)
-        ttk.Label(grp1, text="Base Filename (.txt):").pack(anchor="w")
+
+        ttk.Label(grp1, text=self.tr("settings_lbl_base_name")).pack(anchor="w")
         ttk.Entry(grp1, textvariable=self.custom_name).pack(fill="x", pady=5)
 
-        MDICheckbutton(grp1, images=self.check_imgs, text="Append Timestamp (YYYY-MM-DD_...)",
+        MDICheckbutton(grp1, images=self.check_imgs, text=self.tr("settings_chk_timestamp"),
                        variable=self.use_timestamp).pack(anchor="w", pady=5)
 
-        grp2 = ttk.LabelFrame(p, text="File Management", padding=10)
+        # 分组 2
+        grp2 = ttk.LabelFrame(p, text=self.tr("settings_grp_manage"), padding=10)
         grp2.pack(fill="x", pady=15)
 
-        MDICheckbutton(grp2, images=self.check_imgs, text="Keep Latest Only (Auto-delete old exports)",
+        MDICheckbutton(grp2, images=self.check_imgs, text=self.tr("settings_chk_keep_latest"),
                        variable=self.keep_latest).pack(anchor="w")
 
-        ttk.Label(grp2, text="* Checks file header MAGIC_HEADER for safety.",
-                  font=("Arial", 8), foreground="gray").pack(anchor="w", padx=25)
+        ttk.Label(grp2, text=self.tr("settings_note_safety"),
+                  font=("Arial", 8), foreground="gray", wraplength=350).pack(anchor="w", padx=25)
+
+        # 按钮
         btn_frame = ttk.Frame(p)
         btn_frame.pack(fill="x", pady=10, side="bottom")
-        ttk.Button(btn_frame, text="Save", command=self.save).pack(side="right")
-        ttk.Button(btn_frame, text="Cancel", command=self.destroy).pack(side="right", padx=10)
+        ttk.Button(btn_frame, text=self.tr("btn_save"), command=self.save).pack(side="right")
+        ttk.Button(btn_frame, text=self.tr("btn_cancel"), command=self.destroy).pack(side="right", padx=10)
 
     def save(self):
         safe_name = self.custom_name.get().strip()

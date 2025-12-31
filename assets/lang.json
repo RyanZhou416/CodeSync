@@ -3,6 +3,7 @@
     "app_title": "Code Sync",
     "menu_project": "Project",
     "menu_edit": "Edit",
+    "menu_settings": "Settings",
     "menu_view": "Appearance",
     "menu_help": "Help",
     "cmd_add_save": "Save/New Local Project",
@@ -43,12 +44,22 @@
     "msg_done": "Operation successful.",
     "btn_export_txt":"Export TXT",
     "chk_also_local": "Also save to local",
-    "msg_export_ok": "Context exported to:\n{}"
+    "msg_export_ok": "Context exported to:\n{}",
+    "settings_title": "Settings",
+    "settings_grp_filename": "Output Filename Settings",
+    "settings_lbl_base_name": "Base Filename (.txt):",
+    "settings_chk_timestamp": "Append Timestamp (YYYY-MM-DD_...)",
+    "settings_grp_manage": "File Management",
+    "settings_chk_keep_latest": "Keep Latest Only (Auto-delete old exports)",
+    "settings_note_safety": "* Checks file header MAGIC_HEADER for safety.",
+    "btn_save": "Save",
+    "btn_cancel": "Cancel"
   },
   "zh": {
     "app_title": "CodeSync代码同步",
     "menu_project": "项目",
     "menu_edit": "编辑",
+    "menu_settings": "设置",
     "menu_view": "外观 (View)",
     "menu_help": "帮助",
     "cmd_add_save": "保存/新建本地项目",
@@ -89,6 +100,15 @@
     "msg_done": "操作成功。",
     "btn_export_txt":"导出到本地 TXT",
     "chk_also_local": "同时导出到本地",
-    "msg_export_ok": "已成功导出至：\\n{}"
+    "msg_export_ok": "已成功导出至：\\n{}",
+    "settings_title": "设置",
+    "settings_grp_filename": "输出文件名设置",
+    "settings_lbl_base_name": "基础文件名 (.txt):",
+    "settings_chk_timestamp": "追加时间戳 (YYYY-MM-DD_...)",
+    "settings_grp_manage": "文件管理",
+    "settings_chk_keep_latest": "仅保留最新 (自动删除旧导出)",
+    "settings_note_safety": "* 为了安全，仅删除包含 MAGIC_HEADER 标识的文件。",
+    "btn_save": "保存",
+    "btn_cancel": "取消"
   }
 }

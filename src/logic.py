@@ -88,21 +88,28 @@ def clean_old_exports(root_path, current_new_file):
     3. 解析生成时间，删除比 current_new_file 旧的文件
     """
     try:
+        # === 修复 1: 规范化 root_path，防止 glob 在 Windows 上因为混合斜杠而出错 ===
+        root_path = os.path.normpath(root_path)
+
         # 获取所有文件
         files = glob.glob(os.path.join(root_path, "*"))
 
-        for f_path in files:
-            # 跳过目录和刚刚生成的文件
-            if os.path.isdir(f_path): continue
-            if os.path.abspath(f_path) == os.path.abspath(current_new_file): continue
+        # === 修复 2: 统一路径格式以便比较 ===
+        # Windows 不区分大小写，必须用 normcase 统一转小写比较
+        abs_current = os.path.normcase(os.path.abspath(current_new_file))
 
-            # 安全检查：是否是 CodeSync 生成的文件
+        for f_path in files:
+            if os.path.isdir(f_path): continue
+
+            # === 修复 2 的应用 ===
+            abs_f = os.path.normcase(os.path.abspath(f_path))
+            if abs_f == abs_current:
+                continue
+
             try:
                 with open(f_path, 'r', encoding='utf-8', errors='ignore') as f:
                     first_line = f.readline().strip()
-                    # 只有第一行严格匹配 MAGIC_HEADER 才删除
                     if first_line == config.MAGIC_HEADER:
-                        # 这是一个旧的导出文件，安全删除
                         print(f"Removing old export: {f_path}")
                         os.remove(f_path)
             except Exception:
